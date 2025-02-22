@@ -1,12 +1,12 @@
 #include "shader.h"
 
-#include "dispatch.h"
+#include "device.h"
 #include "util.h"
 
 #include <cassert>
 
-Shader::Shader(Dispatcher& dispatcher, const std::string& path)
-    : dispatcher(&dispatcher)
+Shader::Shader(Device& device, const std::string& path)
+    : device(&device)
 {
     std::vector<char> code = read_bytes(path);
 
@@ -15,11 +15,11 @@ Shader::Shader(Dispatcher& dispatcher, const std::string& path)
     create_info.codeSize = code.size();
     create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
-    if (vkCreateShaderModule(dispatcher.device, &create_info, nullptr, &shader_module) != VK_SUCCESS)
+    if (vkCreateShaderModule(device.logical, &create_info, nullptr, &shader_module) != VK_SUCCESS)
         throw std::runtime_error("Failed to create shader module. Path: " + path);
 }
 
 Shader::~Shader()
 {
-    vkDestroyShaderModule(dispatcher->device, shader_module, nullptr);
+    vkDestroyShaderModule(device->logical, shader_module, nullptr);
 }

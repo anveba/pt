@@ -5,18 +5,27 @@
 #include "scene.h"
 #include "shader.h"
 
-class Rasteriser : IRenderer
+class Rasteriser : public IRenderer
 {
   public:
-    Rasteriser(const Shader& vs, const Shader& ps, Dispatcher& dispatcher);
+    Rasteriser(Device& device,
+               Dispatcher& dispatcher,
+               const Shader& vs,
+               const Shader& ps,
+               VkExtent2D extent,
+               VkFormat image_format,
+               VkFormat depth_format);
     ~Rasteriser();
 
-    virtual void set_scene(const Scene& scene) override;
-    virtual void new_frame() override;
-    virtual void end_frame() override;
+    virtual void set_scene(Dispatcher& dispatcher, const Scene& scene) override;
+    virtual void begin_render(IRenderTarget* render_target) override;
+    virtual VkSemaphore end_render() override;
+
+    static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes();
 
   private:
-    Dispatcher* dispatcher; // TODO, get rid of raw pointer
+    Device* const device;
+    const VkExtent2D extent;
 
     VkRenderPass render_pass;
 
@@ -32,59 +41,35 @@ class Rasteriser : IRenderer
     void* uniform_buffer_map;
 
     VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorPool descriptor_pool;
     VkDescriptorSet descriptor_set;
 
-    VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
 
-    std::vector<VkFramebuffer> framebuffers;
-
-    VkSemaphore image_semaphore;
     VkSemaphore render_semaphore;
     VkFence render_fence;
+    VkSemaphore image_semaphore;
 
-    // TODO move?
     VkImage depth_image;
     VkImageView depth_image_view;
     VkDeviceMemory depth_image_memory;
-
-    uint32_t current_image_index;
+    VkFormat depth_format;
 
     const Scene* scene;
+    bool in_render;
 
-    void create_render_pass();
+    virtual VkRenderPass get_render_pass() override { return render_pass; };
+    virtual std::vector<VkImageView> get_extra_attachments() override { return { depth_image_view }; }
+
+    void create_render_pass(VkFormat image_format, VkFormat depth_format);
     void create_descriptor_set_layout();
     void create_pipeline(const Shader& vs, const Shader& ps);
-    void create_framebuffers();
-    void create_descriptor_pool();
-    void create_command_pool();
-    void create_depth_image();
-    void create_descriptor_set();
-    void create_command_buffer();
+    void create_descriptor_set(Dispatcher& dispatcher);
+    void create_command_buffer(Dispatcher& dispatcher);
+    void create_depth_image(VkFormat depth_format, VkExtent2D extent);
     void create_sync_objects();
-    void write_command_buffer(size_t image_idx);
-
-    // TODO: move elsewhere (to dispatcher?)
-    void create_buffer(VkBuffer& buffer, VkDeviceMemory& memory, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags mem_flags);
-    void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
-    void transfer_to_buffer(VkBuffer& buffer, VkDeviceMemory& memory, const void* src_data, size_t size, VkBufferUsageFlags flags);
-    void create_image(VkImage& image,
-                      VkDeviceMemory& memory,
-                      uint32_t width,
-                      uint32_t height,
-                      VkFormat format,
-                      VkImageTiling tiling,
-                      VkImageUsageFlags usage,
-                      VkMemoryPropertyFlags properties);
-    VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_mask);
-    VkFormat find_image_format(const std::vector<VkFormat>& desirable,
-                               VkImageTiling tiling,
-                               VkFormatFeatureFlags features);
-    uint32_t find_suitable_memory_type(int32_t typeFilter, VkMemoryPropertyFlags desired_flags);
+    void write_command_buffer(VkFramebuffer framebuffer);
 
     void update_uniforms();
-    VkFormat depth_format();
 
     friend class UserInterface;
 

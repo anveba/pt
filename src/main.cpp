@@ -1,4 +1,6 @@
 #include "dispatch.h"
+#include "display.h"
+#include "framechain.h"
 #include "io/ioutil.h"
 #include "io/obj_format.h"
 #include "rasteriser.h"
@@ -16,20 +18,37 @@ int main(int argc, char** argv)
     Scene scene;
     scene.get_meshes().push_back(read_obj(str_from_file("data/bunny.obj")));
 
-    Window window(800, 800);
-    Dispatcher dispatcher(&window);
-    Shader vs(dispatcher, "bin/hello_vertex.spirv");
-    Shader ps(dispatcher, "bin/hello_pixel.spirv");
-    Rasteriser rasteriser(vs, ps, dispatcher);
-    UserInterface ui(window, rasteriser);
+    std::vector<const char*> validation_layers;
+#ifndef NDEBUG
+    validation_layers.push_back("VK_LAYER_KHRONOS_validation");
+#endif
 
-    rasteriser.set_scene(scene);
+    VulkanContext context(CONTEXT_USAGE_WINDOW_BIT, validation_layers);
+    Window window(context, 800, 800);
+    Device device(context, DEVICE_USAGE_WINDOW_BIT, &window);
+
+    const SwapChainSupport& swap_chain_support = device.get_swap_chain_support();
+    VkSurfaceFormatKHR surface_format = choose_surface_format(swap_chain_support.formats);
+    VkPresentModeKHR present_mode = choose_present_mode(swap_chain_support.present_modes);
+    VkExtent2D extent = choose_extent(window, swap_chain_support.capabilities);
+    VkFormat depth_format = choose_depth_format(device);
+
+    Shader vs(device, "bin/hello_vertex.spirv");
+    Shader ps(device, "bin/hello_pixel.spirv");
+    Dispatcher dispatcher(device, DispatchUsage(DISPATCH_USAGE_RASTERISER_BIT | DISPATCH_USAGE_UI_BIT));
+    Rasteriser rasteriser(device, dispatcher, vs, ps, extent, surface_format.format, depth_format);
+    Display display(device, window, surface_format, depth_format, present_mode, extent);
+    UserInterface ui(window, dispatcher, rasteriser);
+    FramebufferChain framebuffers(display, &rasteriser);
+
+    rasteriser.set_scene(dispatcher, scene);
 
     while (true) {
         window.process_events();
+        rasteriser.begin_render(&framebuffers);
         ui.new_frame();
-        rasteriser.new_frame();
         ui.render();
-        rasteriser.end_frame();
+        VkSemaphore render_semaphore = rasteriser.end_render();
+        display.present(render_semaphore);
     }
 }

@@ -3,24 +3,30 @@
 
 #include <cstdint>
 
+#include "context.h"
 #include <SDL3/SDL.h>
 
 class Window
 {
   public:
-    Window(uint32_t width, uint32_t height);
+    Window(VulkanContext& context, uint32_t width, uint32_t height);
     ~Window();
+
+    void get_extent(uint32_t& width, uint32_t& height);
 
     void process_events();
 
   private:
     SDL_Window* handle;
     uint32_t width, height;
+    VkSurfaceKHR surface;
+    VulkanContext const* context;
 
     Window(Window const&) = delete;
     void operator=(Window const&) = delete;
 
-    friend class Dispatcher;
+    friend class Device;
+    friend class Display;
     friend class UserInterface;
 };
 

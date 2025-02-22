@@ -16,7 +16,12 @@ static void check_vk_result(VkResult err)
         abort();
 }
 
-UserInterface::UserInterface(Window& window, Rasteriser& rasteriser)
+std::vector<VkDescriptorPoolSize> UserInterface::get_descriptor_pool_sizes()
+{
+    return { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE } };
+}
+
+UserInterface::UserInterface(Window& window, Dispatcher& dispatcher, Rasteriser& rasteriser)
     : rasteriser(&rasteriser)
 {
     ImGui::CreateContext();
@@ -24,13 +29,13 @@ UserInterface::UserInterface(Window& window, Rasteriser& rasteriser)
     ImGui_ImplSDL3_InitForVulkan(window.handle);
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.ApiVersion = VK_API_VERSION_1_3;
-    init_info.Instance = rasteriser.dispatcher->instance;
-    init_info.PhysicalDevice = rasteriser.dispatcher->physical_device.handle;
-    init_info.Device = rasteriser.dispatcher->device;
-    init_info.QueueFamily = rasteriser.dispatcher->physical_device.present_family_idx.value();
-    init_info.Queue = rasteriser.dispatcher->present_queue;
+    init_info.Instance = rasteriser.device->context->instance;
+    init_info.PhysicalDevice = rasteriser.device->physical;
+    init_info.Device = rasteriser.device->logical;
+    init_info.QueueFamily = rasteriser.device->physical_device_info.present_family_idx.value();
+    init_info.Queue = rasteriser.device->present_queue;
     init_info.PipelineCache = VK_NULL_HANDLE;
-    init_info.DescriptorPool = rasteriser.descriptor_pool;
+    init_info.DescriptorPool = dispatcher.descriptor_pool;
     init_info.RenderPass = rasteriser.render_pass;
     init_info.Subpass = 0;
     init_info.MinImageCount = 2;

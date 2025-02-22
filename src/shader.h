@@ -6,12 +6,12 @@
 #include "renderer.h"
 #include "util.h"
 
-class Dispatcher;
+class Device;
 
 class Shader
 {
   public:
-    Shader(Dispatcher& dispatcher, const std::string& path);
+    Shader(Device& device, const std::string& path);
     ~Shader();
 
   private:
@@ -19,7 +19,7 @@ class Shader
     void operator=(Shader const&) = delete;
 
     VkShaderModule shader_module;
-    Dispatcher* dispatcher; // TODO, remove raw pointer
+    Device const* device;
 
     friend class Rasteriser;
 };
