@@ -9,12 +9,12 @@
 
 struct Vertex
 {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 uv;
+    Vec3 position;
+    Vec3 normal;
+    Vec2 uv;
 
-    static VkVertexInputBindingDescription binding_description();
-    static std::array<VkVertexInputAttributeDescription, 3> attribute_descriptions();
+    static VkVertexInputBindingDescription binding_description(uint32_t binding);
+    static std::array<VkVertexInputAttributeDescription, 3> attribute_descriptions(uint32_t binding, uint32_t location_offset);
 };
 
 // A triangle struct that refers to its vertices through indices
@@ -23,15 +23,6 @@ struct IndexedTriangle
     uint32_t indices[3];
 };
 
-// A triangle struct that owns its vertices
-struct OwnedTriangle
-{
-    Vertex vertices[3];
-};
-
-// A geometric mesh represented by a list of vertices and faces which store
-// three indices that refer to the vertices, much like the obj format.
-// It uses 0-indexing.
 class Mesh
 {
   public:

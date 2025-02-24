@@ -5,6 +5,8 @@
 #include "scene.h"
 #include "shader.h"
 
+struct UniformBufferObject;
+
 class Rasteriser : public IRenderer
 {
   public:
@@ -18,6 +20,8 @@ class Rasteriser : public IRenderer
     ~Rasteriser();
 
     virtual void set_scene(Dispatcher& dispatcher, const Scene& scene) override;
+    virtual void set_camera(Dispatcher& dispatcher, const Camera& camera) override;
+
     virtual void begin_render(IRenderTarget* render_target) override;
     virtual VkSemaphore end_render() override;
 
@@ -34,11 +38,19 @@ class Rasteriser : public IRenderer
 
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
+    std::vector<uint32_t> vertex_end_indices;
+
     VkBuffer index_buffer;
     VkDeviceMemory index_buffer_memory;
+    std::vector<uint32_t> index_end_indices;
+
+    VkBuffer instance_buffer;
+    VkDeviceMemory instance_buffer_memory;
+    std::vector<uint32_t> instance_end_indices;
+
     VkBuffer uniform_buffer;
     VkDeviceMemory uniform_buffer_memory;
-    void* uniform_buffer_map;
+    UniformBufferObject* uniform_buffer_map;
 
     VkDescriptorSetLayout descriptor_set_layout;
     VkDescriptorSet descriptor_set;
@@ -69,7 +81,7 @@ class Rasteriser : public IRenderer
     void create_sync_objects();
     void write_command_buffer(VkFramebuffer framebuffer);
 
-    void update_uniforms();
+    void free_scene_buffers();
 
     friend class UserInterface;
 

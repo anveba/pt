@@ -13,7 +13,7 @@ Mat4 rotation(Vec3 u, float angle)
     if (angle < 1e-5)
         return glm::mat4(1.0f);
 
-    if (u.length() < 1e-5)
+    if (glm::length(u) < 1e-5)
         throw std::runtime_error("Rotation axis was (close to) zero");
 
     u = glm::normalize(u);
@@ -98,4 +98,9 @@ Mat4 projection(
         0.0f);
 
     return projection;
+}
+
+Quaternion quaternion_from_rotation(Vec3 axis, float angle)
+{
+    return Quaternion(cosf(angle / 2.0f), glm::normalize(axis) * sinf(angle / 2.0f));
 }

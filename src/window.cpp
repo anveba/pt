@@ -47,7 +47,7 @@ void Window::get_extent(uint32_t& width, uint32_t& height)
     height = static_cast<uint32_t>(h);
 }
 
-void Window::process_events()
+void Window::process_events(IInputHandler* input_handler)
 {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -55,7 +55,11 @@ void Window::process_events()
         if (event.type == SDL_EVENT_QUIT) {
             exit(0);
         } else if (event.type == SDL_EVENT_KEY_DOWN) {
-            event.key;
+            if (input_handler)
+                input_handler->key_down(event.key.scancode);
+        } else if (event.type == SDL_EVENT_KEY_UP) {
+            if (input_handler)
+                input_handler->key_up(event.key.scancode);
         }
     }
 }

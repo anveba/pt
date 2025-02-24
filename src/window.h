@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "context.h"
+#include "input.h"
 #include <SDL3/SDL.h>
 
 class Window
@@ -14,7 +15,7 @@ class Window
 
     void get_extent(uint32_t& width, uint32_t& height);
 
-    void process_events();
+    void process_events(IInputHandler* input_handler);
 
   private:
     SDL_Window* handle;

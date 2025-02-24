@@ -9,51 +9,32 @@
 #include "mesh.h"
 #include "transform.h"
 
-// A 'copy' of an object (by reference through an index) with
-// an associated transformation and material.
 struct Instance
 {
-    Instance(size_t mesh_index,
-             const Transform& transform,
-             const PhongMaterial& material)
-        : mesh_index(mesh_index)
-        , transform(transform)
-        , material(material)
-    {
-    }
-
-    size_t mesh_index;
     Transform transform;
-    PhongMaterial material;
 };
 
-// A collection of instances of objects along with a camera. Also owns the meshes that
-// the instances refer to.
+struct ObjectVariant
+{
+    std::vector<Instance> instances;
+    Mesh mesh;
+};
+
 class Scene
 {
   public:
-    Scene()
-        : cam(Camera(Mat4(1.0f), Mat4(1.0f), Mat4(1.0f)))
-        , transform(Mat4(1.0f))
-    {
-    }
-
-    Scene(const std::vector<Mesh>& meshes,
-          const std::vector<Instance>& instances,
+    Scene(const std::vector<ObjectVariant>& object_variants,
           const std::vector<PointLight>& point_lights,
           const Camera& camera)
-        : meshes(meshes)
-        , instances(instances)
+        : object_variants(object_variants)
         , point_lights(point_lights)
         , cam(camera)
         , transform(Mat4(1.0f))
     {
     }
 
-    std::vector<Mesh>& get_meshes() { return meshes; }
-    const std::vector<Mesh>& get_meshes() const { return meshes; }
-    std::vector<Instance>& get_instances() { return instances; }
-    const std::vector<Instance>& get_instances() const { return instances; }
+    std::vector<ObjectVariant>& get_object_variants() { return object_variants; }
+    const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
     const std::vector<PointLight>& get_point_lights() const { return point_lights; }
     Camera& camera() { return cam; }
     const Camera& camera() const { return cam; }
@@ -61,8 +42,7 @@ class Scene
     const Transform& global_transform() const { return transform; }
 
   private:
-    std::vector<Mesh> meshes;
-    std::vector<Instance> instances;
+    std::vector<ObjectVariant> object_variants;
 
     std::vector<PointLight> point_lights;
 

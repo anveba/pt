@@ -3,8 +3,6 @@
 
 #include "lalgebra.h"
 
-// Represents a transformation that can be made on a mesh.
-// Holds one matrix: the combined transformation matrix.
 class Transform
 {
   public:

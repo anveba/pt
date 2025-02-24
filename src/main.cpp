@@ -1,12 +1,14 @@
 #include "dispatch.h"
 #include "display.h"
 #include "framechain.h"
+#include "input.h"
 #include "io/ioutil.h"
 #include "io/obj_format.h"
 #include "rasteriser.h"
 #include "ui.h"
 #include "window.h"
 #include <iostream>
+#include <random>
 
 int main(int argc, char** argv)
 {
@@ -15,8 +17,31 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    Scene scene;
-    scene.get_meshes().push_back(read_obj(str_from_file("data/bunny.obj")));
+    std::random_device dev;
+    std::mt19937 rng(dev());
+    std::uniform_real_distribution<float> scale_dist(0.1f, 2.0f);
+    std::uniform_real_distribution<float> rot_dist(-1.0f, 1.0f);
+    std::uniform_real_distribution<float> translate_dist(-10.0f, 10.0f);
+
+    ObjectVariant variant;
+    variant.mesh = read_obj(str_from_file("data/bunny.obj"));
+    variant.instances.resize(20);
+    for (size_t i = 0; i < variant.instances.size(); i++) {
+        Mat4 scale = scaling(Vec3(scale_dist(rng), scale_dist(rng), scale_dist(rng)));
+        Mat4 rot = rotation(Vec3(rot_dist(rng), rot_dist(rng), rot_dist(rng)), rot_dist(rng) * 3.14f);
+        Mat4 trans = translation(Vec3(translate_dist(rng), 0.0f, translate_dist(rng)));
+        variant.instances[i].transform = Transform(trans * rot * scale);
+    }
+    Vec3 pos(0.0f, 0.0f, -10.0f);
+    Camera camera(pos,
+                  Quaternion(1.0f, 0.0f, 0.0f, 0.0f),
+                  glm::radians(45.0f),
+                  1.0f,
+                  0.1f,
+                  1000.0f);
+    Scene scene({ variant }, {}, camera);
+
+    CameraInput camera_input;
 
     std::vector<const char*> validation_layers;
 #ifndef NDEBUG
@@ -44,7 +69,13 @@ int main(int argc, char** argv)
     rasteriser.set_scene(dispatcher, scene);
 
     while (true) {
-        window.process_events();
+        window.process_events(&camera_input);
+        bool camera_rotated = camera_input.rotate(scene.camera(), 0.002f);
+        bool camera_moved = camera_input.move(scene.camera(), 0.01f);
+        if (camera_rotated || camera_moved) {
+            rasteriser.set_camera(dispatcher, scene.camera());
+        }
+
         rasteriser.begin_render(&framebuffers);
         ui.new_frame();
         ui.render();

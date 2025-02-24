@@ -3,16 +3,62 @@
 #include "display.h"
 
 #include <cassert>
-#include <chrono>
-
-#include <glm/gtc/matrix_transform.hpp>
 
 struct UniformBufferObject
 {
-    alignas(16) glm::mat4 mvp;
-    alignas(16) glm::mat4 normal;
-    alignas(16) glm::vec3 view_pos;
-    alignas(16) glm::vec3 light_dir_view_space_norm;
+    alignas(16) Mat4 mvp;
+    alignas(16) Mat3x4 normal;
+    alignas(16) Vec3 view_pos;
+    alignas(16) Vec3 inv_light_dir_norm;
+};
+
+struct InstanceData
+{
+    Mat4 transform;
+    Mat3x4 normal;
+
+    static VkVertexInputBindingDescription binding_description(uint32_t binding)
+    {
+        VkVertexInputBindingDescription binding_description{};
+        binding_description.binding = binding;
+        binding_description.stride = sizeof(InstanceData);
+        binding_description.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+        return binding_description;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 7> attribute_descriptions(uint32_t binding, uint32_t location_offset)
+    {
+        std::array<VkVertexInputAttributeDescription, 7> attribute_descriptions;
+        attribute_descriptions[0].binding = binding;
+        attribute_descriptions[0].location = location_offset + 0;
+        attribute_descriptions[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attribute_descriptions[0].offset = sizeof(float) * 4 * 0;
+        attribute_descriptions[1].binding = binding;
+        attribute_descriptions[1].location = location_offset + 1;
+        attribute_descriptions[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attribute_descriptions[1].offset = sizeof(float) * 4 * 1;
+        attribute_descriptions[2].binding = binding;
+        attribute_descriptions[2].location = location_offset + 2;
+        attribute_descriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attribute_descriptions[2].offset = sizeof(float) * 4 * 2;
+        attribute_descriptions[3].binding = binding;
+        attribute_descriptions[3].location = location_offset + 3;
+        attribute_descriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attribute_descriptions[3].offset = sizeof(float) * 4 * 3;
+        attribute_descriptions[4].binding = binding;
+        attribute_descriptions[4].location = location_offset + 4;
+        attribute_descriptions[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attribute_descriptions[4].offset = sizeof(float) * 4 * 4;
+        attribute_descriptions[5].binding = binding;
+        attribute_descriptions[5].location = location_offset + 5;
+        attribute_descriptions[5].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attribute_descriptions[5].offset = sizeof(float) * 4 * 5;
+        attribute_descriptions[6].binding = binding;
+        attribute_descriptions[6].location = location_offset + 6;
+        attribute_descriptions[6].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attribute_descriptions[6].offset = sizeof(float) * 4 * 6;
+        return attribute_descriptions;
+    }
 };
 
 std::vector<VkDescriptorPoolSize> Rasteriser::get_descriptor_pool_sizes()
@@ -38,7 +84,7 @@ Rasteriser::Rasteriser(
     create_pipeline(vs, ps);
 
     device.create_buffer(uniform_buffer, uniform_buffer_memory, sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkMapMemory(device.logical, uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, &uniform_buffer_map);
+    vkMapMemory(device.logical, uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, (void**)&uniform_buffer_map);
 
     create_descriptor_set(dispatcher);
     create_command_buffer(dispatcher);
@@ -48,12 +94,9 @@ Rasteriser::Rasteriser(
 
 Rasteriser::~Rasteriser()
 {
-    if (scene != nullptr) {
-        vkDestroyBuffer(device->logical, vertex_buffer, nullptr);
-        vkFreeMemory(device->logical, vertex_buffer_memory, nullptr);
-        vkDestroyBuffer(device->logical, index_buffer, nullptr);
-        vkFreeMemory(device->logical, index_buffer_memory, nullptr);
-    }
+    if (scene != nullptr)
+        free_scene_buffers();
+
     vkDestroyBuffer(device->logical, uniform_buffer, nullptr);
     vkFreeMemory(device->logical, uniform_buffer_memory, nullptr);
 
@@ -169,13 +212,22 @@ void Rasteriser::create_pipeline(const Shader& vs, const Shader& ps)
     dynamic_state_create_info.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
     dynamic_state_create_info.pDynamicStates = dynamic_states.data();
 
-    auto binding_description = Vertex::binding_description();
-    auto attribute_descriptions = Vertex::attribute_descriptions();
+    std::vector<VkVertexInputBindingDescription> binding_descriptions = {
+        Vertex::binding_description(0),
+        InstanceData::binding_description(1)
+    };
+
+    std::vector<VkVertexInputAttributeDescription> attribute_descriptions;
+    auto vertex_attributes = Vertex::attribute_descriptions(0, 0);
+    attribute_descriptions.insert(attribute_descriptions.end(), vertex_attributes.begin(), vertex_attributes.end());
+    auto instance_attributes = InstanceData::attribute_descriptions(1, vertex_attributes.size());
+    attribute_descriptions.insert(attribute_descriptions.end(), instance_attributes.begin(), instance_attributes.end());
+    assert(attribute_descriptions.size() == 10);
 
     VkPipelineVertexInputStateCreateInfo vertex_input_create_info{};
     vertex_input_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_create_info.vertexBindingDescriptionCount = 1;
-    vertex_input_create_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_create_info.vertexBindingDescriptionCount = static_cast<uint32_t>(binding_descriptions.size());
+    vertex_input_create_info.pVertexBindingDescriptions = binding_descriptions.data();
     vertex_input_create_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_descriptions.size());
     vertex_input_create_info.pVertexAttributeDescriptions = attribute_descriptions.data();
 
@@ -195,8 +247,8 @@ void Rasteriser::create_pipeline(const Shader& vs, const Shader& ps)
     rasteriser_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasteriser_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasteriser_create_info.lineWidth = 1.0f;
-    rasteriser_create_info.cullMode = VK_CULL_MODE_NONE;
-    rasteriser_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasteriser_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasteriser_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasteriser_create_info.depthBiasEnable = VK_FALSE;
     rasteriser_create_info.depthBiasConstantFactor = 0.0f;
     rasteriser_create_info.depthBiasClamp = 0.0f;
@@ -377,16 +429,23 @@ void Rasteriser::write_command_buffer(VkFramebuffer framebuffer)
     scissor.extent = extent;
     vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    VkBuffer vertex_buffers[] = { vertex_buffer };
     VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
+
+    vkCmdBindVertexBuffers(command_buffer, 1, 1, &instance_buffer, offsets);
 
     vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
 
-    // TODO change vertex count
-    vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(scene->get_meshes()[0].get_indexed_triangles().size() * 3), 1, 0, 0, 0);
+    assert(vertex_end_indices.size() == index_end_indices.size());
+    size_t variant_count = vertex_end_indices.size();
+    for (size_t i = 0; i < variant_count; i++) {
+        uint32_t instance_count = instance_end_indices[i] - (i == 0 ? 0 : instance_end_indices[i - 1]);
+        uint32_t index_count = index_end_indices[i] - (i == 0 ? 0 : index_end_indices[i - 1]);
+        uint32_t vertex_index = i == 0 ? 0 : vertex_end_indices[i - 1];
+        vkCmdDrawIndexed(command_buffer, index_count, instance_count, 0, vertex_index, 0);
+    }
 }
 
 void Rasteriser::create_sync_objects()
@@ -404,63 +463,116 @@ void Rasteriser::create_sync_objects()
         throw std::runtime_error("Failed to create fence.");
 }
 
-void Rasteriser::update_uniforms()
+void Rasteriser::free_scene_buffers()
 {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    glm::vec3 view_pos(4.0f, 4.0f, 4.0f);
-    glm::vec3 light_dir(0.0f, 0.0f, -10.0f);
-
-    UniformBufferObject ubo;
-    glm::mat4 model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    model = glm::rotate(model, time * glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 view = glm::lookAt(view_pos, glm::vec3(0.0f, 0.0f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), extent.width / (float)extent.height, 0.1f, 10.0f);
-    proj[1][1] *= -1.0f;
-
-    ubo.mvp = proj * view * model;
-    ubo.normal = glm::mat3(glm::transpose(glm::inverse(view * model)));
-    ubo.view_pos = view_pos;
-    ubo.light_dir_view_space_norm = glm::normalize(view * glm::vec4(light_dir, 1.0f));
-
-    memcpy(uniform_buffer_map, &ubo, sizeof(UniformBufferObject));
+    assert(this->scene);
+    vkDestroyBuffer(device->logical, vertex_buffer, nullptr);
+    vkFreeMemory(device->logical, vertex_buffer_memory, nullptr);
+    vkDestroyBuffer(device->logical, index_buffer, nullptr);
+    vkFreeMemory(device->logical, index_buffer_memory, nullptr);
+    vkDestroyBuffer(device->logical, instance_buffer, nullptr);
+    vkFreeMemory(device->logical, instance_buffer_memory, nullptr);
 }
 
 void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
 {
-    if (this->scene != nullptr) {
-        vkDestroyBuffer(device->logical, vertex_buffer, nullptr);
-        vkFreeMemory(device->logical, vertex_buffer_memory, nullptr);
-        vkDestroyBuffer(device->logical, index_buffer, nullptr);
-        vkFreeMemory(device->logical, index_buffer_memory, nullptr);
-    }
+    if (this->scene != nullptr)
+        free_scene_buffers();
 
     this->scene = &scene;
 
-    const Mesh& mesh = scene.get_meshes()[0];
+    size_t vertex_count = 0, index_count = 0, instance_count = 0;
+    const std::vector<ObjectVariant>& object_variants = scene.get_object_variants();
+
+    for (const ObjectVariant& variant : object_variants) {
+        vertex_count += variant.mesh.get_vertices().size();
+        index_count += variant.mesh.get_indexed_triangles().size();
+        instance_count += variant.instances.size();
+    }
+
+    std::vector<Vertex> all_vertices;
+    all_vertices.reserve(vertex_count);
+    std::vector<IndexedTriangle> all_indices;
+    all_indices.reserve(index_count);
+    std::vector<InstanceData> all_instance_data;
+    all_indices.reserve(instance_count);
+
+    vertex_end_indices.clear();
+    vertex_end_indices.reserve(object_variants.size());
+    index_end_indices.clear();
+    index_end_indices.reserve(object_variants.size());
+    instance_end_indices.clear();
+    instance_end_indices.reserve(object_variants.size());
+
+    for (const ObjectVariant& variant : object_variants) {
+
+        const auto& vertices = variant.mesh.get_vertices();
+        all_vertices.insert(all_vertices.end(), vertices.begin(), vertices.end());
+        vertex_end_indices.push_back(static_cast<uint32_t>(all_vertices.size()));
+
+        const auto& indices = variant.mesh.get_indexed_triangles();
+        all_indices.insert(all_indices.end(), indices.begin(), indices.end());
+        index_end_indices.push_back(static_cast<uint32_t>(all_indices.size()) * 3);
+
+        for (const Instance inst : variant.instances) {
+            InstanceData data;
+            data.transform = inst.transform.matrix();
+            data.normal = glm::transpose(glm::inverse(inst.transform.matrix()));
+            all_instance_data.push_back(data);
+        }
+        instance_end_indices.push_back(static_cast<uint32_t>(all_instance_data.size()));
+    }
 
     device->create_buffer(vertex_buffer,
                           vertex_buffer_memory,
-                          mesh.get_vertices().size() * sizeof(Vertex),
+                          all_vertices.size() * sizeof(Vertex),
                           VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     dispatcher.transfer_to_buffer(vertex_buffer,
-                                  mesh.get_vertices().data(),
-                                  mesh.get_vertices().size() * sizeof(Vertex));
+                                  all_vertices.data(),
+                                  all_vertices.size() * sizeof(Vertex));
 
     device->create_buffer(index_buffer,
                           index_buffer_memory,
-                          mesh.get_indexed_triangles().size() * sizeof(Vertex),
+                          all_indices.size() * sizeof(IndexedTriangle),
                           VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     dispatcher.transfer_to_buffer(index_buffer,
-                                  mesh.get_indexed_triangles().data(),
-                                  mesh.get_indexed_triangles().size() * sizeof(IndexedTriangle));
+                                  all_indices.data(),
+                                  all_indices.size() * sizeof(IndexedTriangle));
+
+    device->create_buffer(instance_buffer,
+                          instance_buffer_memory,
+                          all_instance_data.size() * sizeof(InstanceData),
+                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    dispatcher.transfer_to_buffer(instance_buffer,
+                                  all_instance_data.data(),
+                                  all_instance_data.size() * sizeof(InstanceData));
+
+    set_camera(dispatcher, scene.camera());
+}
+
+#include "glm/gtc/quaternion.hpp"
+
+void Rasteriser::set_camera(Dispatcher& dispatcher, const Camera& camera)
+{
+    if (scene == nullptr)
+        throw std::runtime_error("No scene has been set.");
+
+    glm::vec3 light_dir(0.0f, -10.0f, 0.0f);
+
+    Mat4 model = scene->global_transform().matrix();
+    Mat4 view = camera.view_matrix();
+    Mat4 proj = camera.projection_matrix();
+
+    uniform_buffer_map->mvp = proj * view * model;
+    uniform_buffer_map->normal = glm::transpose(glm::inverse(model));
+    uniform_buffer_map->view_pos = camera.get_position();
+    uniform_buffer_map->inv_light_dir_norm = glm::normalize(-light_dir);
 }
 
 void Rasteriser::begin_render(IRenderTarget* render_target)
@@ -487,8 +599,6 @@ void Rasteriser::begin_render(IRenderTarget* render_target)
         throw std::runtime_error("Failed to begin command buffer.");
 
     write_command_buffer(framebuffer);
-
-    update_uniforms();
 
     in_render = true;
 }

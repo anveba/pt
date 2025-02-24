@@ -1,16 +1,23 @@
 #include "camera.h"
 
-Camera::Camera(
-    const Mat4& translation,
-    const Mat4& rotation,
-    const Mat4& projection)
-    : translation(translation)
+Camera::Camera(Vec3 position,
+               Quaternion rotation,
+               float vertical_fov,
+               float aspect_ratio,
+               float near,
+               float far)
+    : position(position)
     , rotation(rotation)
-    , projection(projection)
+    , vertical_fov(vertical_fov)
+    , aspect_ratio(aspect_ratio)
+    , near(near)
+    , far(far)
 {
 }
 
-Mat4 Camera::world_to_ndc_matrix() const
+Mat4 Camera::projection_matrix() const
 {
-    return projection * glm::inverse(translation * rotation);
-}
+    Mat4 proj = glm::perspective(vertical_fov, aspect_ratio, near, far);
+    proj[1][1] *= -1.0f;
+    return proj;
+};

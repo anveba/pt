@@ -22,11 +22,11 @@ void Dispatcher::create_descriptor_pool()
     std::vector<VkDescriptorPoolSize> pool_sizes;
     if (usage & DISPATCH_USAGE_RASTERISER_BIT) {
         std::vector<VkDescriptorPoolSize> extra = Rasteriser::get_descriptor_pool_sizes();
-        pool_sizes.insert(pool_sizes.begin(), extra.begin(), extra.end());
+        pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
     }
     if (usage & DISPATCH_USAGE_UI_BIT) {
         std::vector<VkDescriptorPoolSize> extra = UserInterface::get_descriptor_pool_sizes();
-        pool_sizes.insert(pool_sizes.begin(), extra.begin(), extra.end());
+        pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
     }
 
     VkDescriptorPoolCreateInfo pool_info{};
