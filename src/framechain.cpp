@@ -1,12 +1,12 @@
 #include "framechain.h"
 
-FramebufferChain::FramebufferChain(Display& display, IRenderer* renderer)
+FramebufferChain::FramebufferChain(Display& display, IDisplayable* displayable)
     : display(&display)
 {
-    if (renderer == nullptr)
-        throw std::runtime_error("Renderer was null.");
+    if (displayable == nullptr)
+        throw std::runtime_error("Displayable was null.");
 
-    std::vector<VkImageView> extra_attachments = renderer->get_extra_attachments();
+    std::vector<VkImageView> extra_attachments = displayable->get_extra_attachments();
 
     framebuffers.resize(display.swap_chain.images.size());
     for (size_t i = 0; i < display.swap_chain.images.size(); i++) {
@@ -16,7 +16,7 @@ FramebufferChain::FramebufferChain(Display& display, IRenderer* renderer)
 
         VkFramebufferCreateInfo framebuffer_create_info{};
         framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer_create_info.renderPass = renderer->get_render_pass();
+        framebuffer_create_info.renderPass = displayable->get_render_pass();
         framebuffer_create_info.attachmentCount = static_cast<uint32_t>(attachments.size());
         framebuffer_create_info.pAttachments = attachments.data();
         framebuffer_create_info.width = display.swap_chain.extent.width;

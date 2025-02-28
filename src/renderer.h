@@ -18,7 +18,10 @@ class IRenderer
 
     virtual void begin_render(IRenderTarget* target) = 0;
     virtual VkSemaphore end_render() = 0;
+};
 
+class IDisplayable
+{
   private:
     virtual VkRenderPass get_render_pass() = 0;
     virtual std::vector<VkImageView> get_extra_attachments() = 0;

@@ -1,45 +1,36 @@
 #include "dispatch.h"
 #include "display.h"
+#include "fps.h"
 #include "framechain.h"
 #include "input.h"
-#include "io/ioutil.h"
-#include "io/obj_format.h"
 #include "rasteriser.h"
+#include "scene.h"
 #include "ui.h"
 #include "window.h"
+#include <chrono>
 #include <iostream>
 #include <random>
 
 int main(int argc, char** argv)
 {
+    if (argc != 2) {
+        std::cerr << "Expected path to scene." << std::endl;
+        return 1;
+    }
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "Init error : " << SDL_GetError() << std::endl;
         return 1;
     }
 
-    std::random_device dev;
-    std::mt19937 rng(dev());
-    std::uniform_real_distribution<float> scale_dist(0.1f, 2.0f);
-    std::uniform_real_distribution<float> rot_dist(-1.0f, 1.0f);
-    std::uniform_real_distribution<float> translate_dist(-10.0f, 10.0f);
-
-    ObjectVariant variant;
-    variant.mesh = read_obj(str_from_file("data/bunny.obj"));
-    variant.instances.resize(20);
-    for (size_t i = 0; i < variant.instances.size(); i++) {
-        Mat4 scale = scaling(Vec3(scale_dist(rng), scale_dist(rng), scale_dist(rng)));
-        Mat4 rot = rotation(Vec3(rot_dist(rng), rot_dist(rng), rot_dist(rng)), rot_dist(rng) * 3.14f);
-        Mat4 trans = translation(Vec3(translate_dist(rng), 0.0f, translate_dist(rng)));
-        variant.instances[i].transform = Transform(trans * rot * scale);
-    }
-    Vec3 pos(0.0f, 0.0f, -10.0f);
-    Camera camera(pos,
+    Camera camera(Vec3(0.0f, 0.0f, -10.0f),
                   Quaternion(1.0f, 0.0f, 0.0f, 0.0f),
                   glm::radians(45.0f),
                   1.0f,
                   0.1f,
                   1000.0f);
-    Scene scene({ variant }, {}, camera);
+    Scene scene;
+    scene.from_file(std::string(argv[1]), camera);
 
     CameraInput camera_input;
 
@@ -48,18 +39,18 @@ int main(int argc, char** argv)
     validation_layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
-    VulkanContext context(CONTEXT_USAGE_WINDOW_BIT, validation_layers);
+    VulkanContext context(ContextUsage(CONTEXT_USAGE_WINDOW_BIT), validation_layers);
     Window window(context, 800, 800);
-    Device device(context, DEVICE_USAGE_WINDOW_BIT, &window);
+    Device device(context, DeviceUsage(DEVICE_USAGE_WINDOW_BIT), &window);
 
     const SwapChainSupport& swap_chain_support = device.get_swap_chain_support();
     VkSurfaceFormatKHR surface_format = choose_surface_format(swap_chain_support.formats);
-    VkPresentModeKHR present_mode = choose_present_mode(swap_chain_support.present_modes);
+    VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR; // choose_present_mode(swap_chain_support.present_modes);
     VkExtent2D extent = choose_extent(window, swap_chain_support.capabilities);
     VkFormat depth_format = choose_depth_format(device);
 
-    Shader vs(device, "bin/hello_vertex.spirv");
-    Shader ps(device, "bin/hello_pixel.spirv");
+    Shader vs(device, "bin/rasteriser_vtx.spv");
+    Shader ps(device, "bin/rasteriser_pxl.spv");
     Dispatcher dispatcher(device, DispatchUsage(DISPATCH_USAGE_RASTERISER_BIT | DISPATCH_USAGE_UI_BIT));
     Rasteriser rasteriser(device, dispatcher, vs, ps, extent, surface_format.format, depth_format);
     Display display(device, window, surface_format, depth_format, present_mode, extent);
@@ -67,18 +58,38 @@ int main(int argc, char** argv)
     FramebufferChain framebuffers(display, &rasteriser);
 
     rasteriser.set_scene(dispatcher, scene);
+    rasteriser.set_camera(dispatcher, camera);
+
+    FpsCounter fps_counter(1.0f);
+    fps_counter.restart();
+    UiInfo ui_info;
+
+    auto last_frame = std::chrono::high_resolution_clock::now();
 
     while (true) {
+        auto this_frame = std::chrono::high_resolution_clock::now();
+        float delta_time = std::chrono::duration<float>(this_frame - last_frame).count();
+        last_frame = this_frame;
+
         window.process_events(&camera_input);
-        bool camera_rotated = camera_input.rotate(scene.camera(), 0.002f);
-        bool camera_moved = camera_input.move(scene.camera(), 0.01f);
-        if (camera_rotated || camera_moved) {
-            rasteriser.set_camera(dispatcher, scene.camera());
-        }
+
+        bool camera_rotated = camera_input.rotate(camera, 1.0f * delta_time);
+        bool camera_moved = camera_input.move(camera, 4.0f * delta_time);
+        if (camera_rotated || camera_moved)
+            rasteriser.set_camera(dispatcher, camera);
 
         rasteriser.begin_render(&framebuffers);
-        ui.new_frame();
+
+        fps_counter.add_frame();
+
+        ui_info.fps = fps_counter.frames_per_second();
+        ui_info.cam_position = camera.position;
+        ui_info.look_dir = glm::normalize(camera.rotation * Vec3(0.0f, 0.0f, 1.0f));
+        ui_info.near = camera.near;
+        ui_info.far = camera.far;
+        ui.new_frame(ui_info);
         ui.render();
+
         VkSemaphore render_semaphore = rasteriser.end_render();
         display.present(render_semaphore);
     }

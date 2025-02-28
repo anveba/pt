@@ -1,5 +1,6 @@
 #include "device.h"
 
+#include <cassert>
 #include <set>
 
 static void query_swap_chain_support(SwapChainSupport& support, VkPhysicalDevice device, VkSurfaceKHR surface)
@@ -30,7 +31,7 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
     , context(&context)
     , usage(usage)
 {
-    if (((usage & DEVICE_USAGE_WINDOW_BIT) != 0) == (window == nullptr))
+    if (((usage & DEVICE_USAGE_WINDOW_BIT) == 0) != (window == nullptr))
         throw std::runtime_error("Window usage bit is not compatible with window parameter given.");
 
     uint32_t device_count;
@@ -80,6 +81,11 @@ static void get_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevice 
         }
     }
 
+    info.ray_tracing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
+    VkPhysicalDeviceProperties2 prop2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+    prop2.pNext = &info.ray_tracing_properties;
+    vkGetPhysicalDeviceProperties2(device, &prop2);
+
     uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
 
@@ -126,8 +132,23 @@ static bool meets_swap_chain_requirements(VkPhysicalDevice device, VkSurfaceKHR 
 
 static void get_required_extensions(std::vector<const char*>& required_extensions, DeviceUsage usage)
 {
-    if (usage & DEVICE_USAGE_WINDOW_BIT)
+    if (usage & DEVICE_USAGE_WINDOW_BIT) {
         required_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    }
+    if (usage & DEVICE_USAGE_RAY_TRACE_BIT) {
+        required_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        required_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        required_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+    }
+}
+
+static VkDeviceAddress get_buffer_address(VkDevice device, VkBuffer buffer)
+{
+    VkBufferDeviceAddressInfo address_info = {};
+    address_info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    address_info.buffer = buffer;
+
+    return vkGetBufferDeviceAddress(device, &address_info);
 }
 
 static int rank_device_type(VkPhysicalDeviceType type)
@@ -184,6 +205,8 @@ void Device::find_physical_device(
             best_device_info = info;
         }
     }
+    if (best_device == VK_NULL_HANDLE)
+        throw std::runtime_error("No suitable physical device was found.");
 
     std::cout << "Using physical device " << best_device_info.name << "." << std::endl;
 
@@ -296,11 +319,10 @@ uint32_t Device::find_suitable_memory_type(
     VkPhysicalDeviceMemoryProperties mem_properties;
     vkGetPhysicalDeviceMemoryProperties(physical, &mem_properties);
 
-    for (uint32_t i = 0; i < mem_properties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & desired_flags) == desired_flags) {
+    for (uint32_t i = 0; i < mem_properties.memoryTypeCount; i++)
+        if ((typeFilter & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & desired_flags) == desired_flags)
             return i;
-        }
-    }
+
     throw std::runtime_error("No suitable memory type found.");
 }
 

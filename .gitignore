@@ -1,5 +1,6 @@
 bin/
 obj/
 data/
+lib/
 gmon.out
 imgui.ini

@@ -3,7 +3,7 @@ FLAGS := -Wall -std=c++20 -march=native -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZE
 DEBUG_FLAGS = -p -g3
 RELEASE_FLAGS = -Ofast -flto -DNDEBUG
 INCLUDE := -Isrc  -Iinclude -Iinclude/vulkan -Iinclude/imgui
-LINK := -lvulkan `pkg-config sdl3 --libs`
+LINK := -lvulkan `pkg-config sdl3 --libs` -lassimp
 
 CCFLAGS := $(FLAGS) $(INCLUDE) $(LINK)
 LDFLAGS := $(FLAGS)

@@ -23,30 +23,23 @@ struct ObjectVariant
 class Scene
 {
   public:
-    Scene(const std::vector<ObjectVariant>& object_variants,
-          const std::vector<PointLight>& point_lights,
-          const Camera& camera)
-        : object_variants(object_variants)
-        , point_lights(point_lights)
-        , cam(camera)
-        , transform(Mat4(1.0f))
+    Scene()
+        : transform(Mat4(1.0f))
     {
     }
 
     std::vector<ObjectVariant>& get_object_variants() { return object_variants; }
     const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
     const std::vector<PointLight>& get_point_lights() const { return point_lights; }
-    Camera& camera() { return cam; }
-    const Camera& camera() const { return cam; }
     Transform& global_transform() { return transform; }
     const Transform& global_transform() const { return transform; }
+
+    void from_file(const std::string& path, Camera& camera);
 
   private:
     std::vector<ObjectVariant> object_variants;
 
     std::vector<PointLight> point_lights;
-
-    Camera cam;
 
     Transform transform;
 };

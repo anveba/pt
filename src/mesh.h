@@ -41,6 +41,8 @@ class Mesh
   private:
     std::vector<Vertex> vertices;
     std::vector<IndexedTriangle> tris;
+
+    friend class Scene;
 };
 
 #endif

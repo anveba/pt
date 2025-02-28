@@ -11,15 +11,11 @@ class Transform
     }
 
     Transform(Mat4 transform)
-        : mat(transform)
+        : matrix(transform)
     {
     }
 
-    Mat4& matrix() { return mat; }
-    const Mat4& matrix() const { return mat; }
-
-  private:
-    Mat4 mat;
+    Mat4 matrix;
 };
 
 #endif

@@ -2,12 +2,12 @@
 #define RASTERISER_H_INCLUDED
 
 #include "renderer.h"
-#include "scene.h"
 #include "shader.h"
 
 struct UniformBufferObject;
 
 class Rasteriser : public IRenderer
+    , public IDisplayable
 {
   public:
     Rasteriser(Device& device,
@@ -36,6 +36,7 @@ class Rasteriser : public IRenderer
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
 
+    // TODO: combine buffers
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
     std::vector<uint32_t> vertex_end_indices;

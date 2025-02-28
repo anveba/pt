@@ -52,13 +52,18 @@ UserInterface::~UserInterface()
     ImGui::DestroyContext();
 }
 
-void UserInterface::new_frame()
+void UserInterface::new_frame(const UiInfo& info)
 {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::ShowDemoWindow();
+    ImGui::Begin("Debug Info");
+    ImGui::Text("FPS: %.1f", info.fps);
+    ImGui::Text("Position: (%.2f, %.2f, %.2f)", info.cam_position.x, info.cam_position.y, info.cam_position.z);
+    ImGui::Text("Look direction: (%.2f, %.2f, %.2f)", info.look_dir.x, info.look_dir.y, info.look_dir.z);
+    ImGui::Text("Clipping planes: %.2f, %.2f", info.near, info.far);
+    ImGui::End();
 }
 
 void UserInterface::render()

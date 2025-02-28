@@ -32,6 +32,7 @@ class Dispatcher
 
     friend class Rasteriser;
     friend class UserInterface;
+    friend class RayTracer;
 
     Dispatcher(Dispatcher const&) = delete;
     void operator=(Dispatcher const&) = delete;

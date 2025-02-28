@@ -2,14 +2,15 @@
 #include "dispatch.h"
 #include "display.h"
 
+#include "scene.h"
 #include <cassert>
 
 struct UniformBufferObject
 {
     alignas(16) Mat4 mvp;
-    alignas(16) Mat3x4 normal;
     alignas(16) Vec3 view_pos;
     alignas(16) Vec3 inv_light_dir_norm;
+    alignas(16) Mat3x4 normal;
 };
 
 struct InstanceData
@@ -247,7 +248,7 @@ void Rasteriser::create_pipeline(const Shader& vs, const Shader& ps)
     rasteriser_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasteriser_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasteriser_create_info.lineWidth = 1.0f;
-    rasteriser_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasteriser_create_info.cullMode = VK_CULL_MODE_NONE;
     rasteriser_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasteriser_create_info.depthBiasEnable = VK_FALSE;
     rasteriser_create_info.depthBiasConstantFactor = 0.0f;
@@ -441,25 +442,26 @@ void Rasteriser::write_command_buffer(VkFramebuffer framebuffer)
     assert(vertex_end_indices.size() == index_end_indices.size());
     size_t variant_count = vertex_end_indices.size();
     for (size_t i = 0; i < variant_count; i++) {
-        uint32_t instance_count = instance_end_indices[i] - (i == 0 ? 0 : instance_end_indices[i - 1]);
         uint32_t index_count = index_end_indices[i] - (i == 0 ? 0 : index_end_indices[i - 1]);
+        uint32_t instance_count = instance_end_indices[i] - (i == 0 ? 0 : instance_end_indices[i - 1]);
+        uint32_t index_index = i == 0 ? 0 : index_end_indices[i - 1];
         uint32_t vertex_index = i == 0 ? 0 : vertex_end_indices[i - 1];
-        vkCmdDrawIndexed(command_buffer, index_count, instance_count, 0, vertex_index, 0);
+        vkCmdDrawIndexed(command_buffer, index_count, instance_count, index_index, vertex_index, 0);
     }
 }
 
 void Rasteriser::create_sync_objects()
 {
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    if (vkCreateSemaphore(device->logical, &semaphoreInfo, nullptr, &image_semaphore) != VK_SUCCESS ||
-        vkCreateSemaphore(device->logical, &semaphoreInfo, nullptr, &render_semaphore) != VK_SUCCESS)
+    VkSemaphoreCreateInfo semaphore_create_info{};
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    if (vkCreateSemaphore(device->logical, &semaphore_create_info, nullptr, &image_semaphore) != VK_SUCCESS ||
+        vkCreateSemaphore(device->logical, &semaphore_create_info, nullptr, &render_semaphore) != VK_SUCCESS)
         throw std::runtime_error("Failed to create semaphore.");
 
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    if (vkCreateFence(device->logical, &fenceInfo, nullptr, &render_fence) != VK_SUCCESS)
+    VkFenceCreateInfo fence_create_info{};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    if (vkCreateFence(device->logical, &fence_create_info, nullptr, &render_fence) != VK_SUCCESS)
         throw std::runtime_error("Failed to create fence.");
 }
 
@@ -516,8 +518,8 @@ void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
 
         for (const Instance inst : variant.instances) {
             InstanceData data;
-            data.transform = inst.transform.matrix();
-            data.normal = glm::transpose(glm::inverse(inst.transform.matrix()));
+            data.transform = inst.transform.matrix;
+            data.normal = glm::transpose(glm::inverse(inst.transform.matrix));
             all_instance_data.push_back(data);
         }
         instance_end_indices.push_back(static_cast<uint32_t>(all_instance_data.size()));
@@ -552,11 +554,7 @@ void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
     dispatcher.transfer_to_buffer(instance_buffer,
                                   all_instance_data.data(),
                                   all_instance_data.size() * sizeof(InstanceData));
-
-    set_camera(dispatcher, scene.camera());
 }
-
-#include "glm/gtc/quaternion.hpp"
 
 void Rasteriser::set_camera(Dispatcher& dispatcher, const Camera& camera)
 {
@@ -565,13 +563,13 @@ void Rasteriser::set_camera(Dispatcher& dispatcher, const Camera& camera)
 
     glm::vec3 light_dir(0.0f, -10.0f, 0.0f);
 
-    Mat4 model = scene->global_transform().matrix();
+    Mat4 model = scene->global_transform().matrix;
     Mat4 view = camera.view_matrix();
     Mat4 proj = camera.projection_matrix();
 
     uniform_buffer_map->mvp = proj * view * model;
     uniform_buffer_map->normal = glm::transpose(glm::inverse(model));
-    uniform_buffer_map->view_pos = camera.get_position();
+    uniform_buffer_map->view_pos = camera.position;
     uniform_buffer_map->inv_light_dir_norm = glm::normalize(-light_dir);
 }
 

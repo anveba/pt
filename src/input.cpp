@@ -76,13 +76,13 @@ bool CameraInput::rotate(Camera& camera, float step)
     if (std::abs(pitch) < 1e-5 && std::abs(yaw) < 1e-5f)
         return false;
 
-    const Vec3 up = camera.get_rotation() * Vec3(0.0f, 1.0f, 0.0f);
-    const Vec3 forward = camera.get_rotation() * Vec3(0.0f, 0.0f, 1.0f);
+    const Vec3 up = camera.rotation * Vec3(0.0f, 1.0f, 0.0f);
+    const Vec3 forward = camera.rotation * Vec3(0.0f, 0.0f, 1.0f);
     const Vec3 axis = glm::cross(up, forward);
 
-    camera.get_rotation() = quaternion_from_rotation(up, yaw) *
-                            quaternion_from_rotation(axis, pitch) *
-                            camera.get_rotation();
+    camera.rotation = quaternion_from_rotation(up, yaw) *
+                      quaternion_from_rotation(axis, pitch) *
+                      camera.rotation;
 
     return true;
 }
@@ -103,12 +103,12 @@ bool CameraInput::move(Camera& camera, float step)
     if (descend)
         movement += Vec3(0.0f, -1.0f, 0.0f);
     movement *= step;
-    movement = camera.get_rotation() * movement;
+    movement = camera.rotation * movement;
 
     if (glm::length(movement) < 1e-5)
         return false;
 
-    camera.get_position() += movement;
+    camera.position += movement;
 
     return true;
 }

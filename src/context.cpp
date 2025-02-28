@@ -52,6 +52,9 @@ static std::vector<const char*> get_required_instance_extensions(bool enable_val
             extensions.push_back(*ext);
     }
 
+    if (usage & CONTEXT_USAGE_RAY_TRACE_BIT) {
+    }
+
     if (enable_validation_layers)
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 

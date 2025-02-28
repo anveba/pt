@@ -9,7 +9,7 @@
 class FramebufferChain : public IRenderTarget
 {
   public:
-    FramebufferChain(Display& display, IRenderer* renderer);
+    FramebufferChain(Display& display, IDisplayable* displayable);
     ~FramebufferChain();
 
     VkFramebuffer acquire(VkSemaphore semaphore);

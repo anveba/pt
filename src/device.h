@@ -19,6 +19,8 @@ struct PhysicalDeviceInfo
     VkPhysicalDeviceType type;
     VkDeviceSize heap_size;
 
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR ray_tracing_properties;
+
     std::optional<uint32_t> graphics_family_idx;
     std::optional<uint32_t> present_family_idx;
 };
@@ -83,6 +85,7 @@ class Device
     friend class Display;
     friend class Shader;
     friend class Rasteriser;
+    friend class RayTracer;
     friend class Dispatcher;
     friend class UserInterface;
     friend class FramebufferChain;
