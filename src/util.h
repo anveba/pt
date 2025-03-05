@@ -15,8 +15,23 @@
         }                                                                                   \
     }
 
-#endif
-
-#define SIZE_OF_ARRAY(a) ((size_t)(sizeof(a) / sizeof(*(a))))
-
 std::vector<char> read_bytes(const std::string& path);
+
+template<typename T>
+inline T round_up_to(T value, T alignment)
+{
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
+void transition_image_layout(
+    VkCommandBuffer command_buffer,
+    VkImage image,
+    VkImageLayout old_layout,
+    VkImageLayout new_layout,
+    VkAccessFlags src_access,
+    VkAccessFlags dst_access,
+    VkPipelineStageFlags src_stage,
+    VkPipelineStageFlags dst_stage,
+    const VkImageSubresourceRange& subresource_range);
+
+#endif

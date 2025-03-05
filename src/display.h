@@ -2,7 +2,6 @@
 #define DISPLAY_H_INCLUDED
 
 #include "device.h"
-#include "rtarget.h"
 #include "util.h"
 #include "window.h"
 
@@ -31,28 +30,39 @@ class Display
     Display(Device& device,
             Window& window,
             VkSurfaceFormatKHR format,
-            VkFormat depth_format,
-            VkPresentModeKHR present_mode,
-            VkExtent2D extent);
+            VkPresentModeKHR present_mode);
     ~Display();
 
     void present(VkSemaphore wait_for);
 
+    inline VkExtent2D get_extent() { return swap_chain.extent; }
+    void recreate_swap_chain();
+
+    Window& get_window() { return window; }
+
   private:
     SwapChain swap_chain;
+    VkSurfaceFormatKHR surface_format;
+    VkPresentModeKHR present_mode;
 
     uint32_t current_image_index;
 
-    Device* const device;
+    Device& device;
+    Window& window;
 
     uint32_t acquire_next_index(VkSemaphore image_ready);
+
+    void copy_image(VkImage src, uint32_t dst_index);
+
     void create_swap_chain(Device& device,
                            Window& window,
                            VkSurfaceFormatKHR surface_format,
-                           VkPresentModeKHR present_mode,
-                           VkExtent2D extent);
+                           VkPresentModeKHR present_mode);
 
-    friend class FramebufferChain;
+    void destroy_swap_chain();
+
+    friend class RasteriseDisplayer;
+    friend class RayTraceDisplayer;
 
     Display(Display const&) = delete;
     void operator=(Display const&) = delete;

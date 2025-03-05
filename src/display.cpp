@@ -5,19 +5,27 @@
 Display::Display(Device& device,
                  Window& window,
                  VkSurfaceFormatKHR surface_format,
-                 VkFormat depth_format,
-                 VkPresentModeKHR present_mode,
-                 VkExtent2D extent)
-    : device(&device)
+                 VkPresentModeKHR present_mode)
+    : surface_format(surface_format)
+    , present_mode(present_mode)
+    , device(device)
+    , window(window)
 {
-    create_swap_chain(device, window, surface_format, present_mode, extent);
+    SwapChainSupport swap_chain_support;
+    device.query_swap_chain_support(swap_chain_support, window);
+    create_swap_chain(device, window, surface_format, present_mode);
 }
 
 Display::~Display()
 {
+    destroy_swap_chain();
+}
+
+void Display::destroy_swap_chain()
+{
     for (auto view : swap_chain.image_views)
-        vkDestroyImageView(device->logical, view, nullptr);
-    vkDestroySwapchainKHR(device->logical, swap_chain.handle, nullptr);
+        vkDestroyImageView(device.logical, view, nullptr);
+    vkDestroySwapchainKHR(device.logical, swap_chain.handle, nullptr);
 }
 
 VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceFormatKHR>& formats)
@@ -47,8 +55,7 @@ VkExtent2D choose_extent(Window& window, const VkSurfaceCapabilitiesKHR& capabil
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     } else {
-        uint32_t width, height;
-        window.get_extent(width, height);
+        uint32_t width = window.get_pixel_width(), height = window.get_pixel_height();
 
         VkExtent2D extent{};
         extent.width = std::clamp(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
@@ -69,15 +76,17 @@ VkFormat choose_depth_format(Device& device)
 void Display::create_swap_chain(Device& device,
                                 Window& window,
                                 VkSurfaceFormatKHR surface_format,
-                                VkPresentModeKHR present_mode,
-                                VkExtent2D extent)
+                                VkPresentModeKHR present_mode)
 {
-    swap_chain.image_format = surface_format.format;
-    swap_chain.extent = extent;
+    SwapChainSupport swap_chain_support;
+    device.query_swap_chain_support(swap_chain_support, window);
 
-    uint32_t image_count = device.swap_chain_support.capabilities.minImageCount;
-    if (device.swap_chain_support.capabilities.maxImageCount == 0 ||
-        device.swap_chain_support.capabilities.maxImageCount > image_count) {
+    swap_chain.image_format = surface_format.format;
+    swap_chain.extent = choose_extent(window, swap_chain_support.capabilities);
+
+    uint32_t image_count = swap_chain_support.capabilities.minImageCount;
+    if (swap_chain_support.capabilities.maxImageCount == 0 ||
+        swap_chain_support.capabilities.maxImageCount > image_count) {
         image_count += 1;
     }
 
@@ -89,7 +98,7 @@ void Display::create_swap_chain(Device& device,
     create_info.imageColorSpace = surface_format.colorSpace;
     create_info.imageExtent = swap_chain.extent;
     create_info.imageArrayLayers = 1;
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT; // TODO TRANSFER_DST_BIT is used for ray tracing and should be only used when indicated
 
     uint32_t queue_family_indices[] = { device.physical_device_info.graphics_family_idx.value(),
                                         device.physical_device_info.present_family_idx.value() };
@@ -102,7 +111,7 @@ void Display::create_swap_chain(Device& device,
         create_info.queueFamilyIndexCount = 0;
         create_info.pQueueFamilyIndices = nullptr;
     }
-    create_info.preTransform = device.swap_chain_support.capabilities.currentTransform;
+    create_info.preTransform = swap_chain_support.capabilities.currentTransform;
     create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     create_info.presentMode = present_mode;
     create_info.clipped = VK_TRUE; // TODO
@@ -122,8 +131,19 @@ void Display::create_swap_chain(Device& device,
 
 uint32_t Display::acquire_next_index(VkSemaphore image_ready)
 {
-    vkAcquireNextImageKHR(device->logical, swap_chain.handle, UINT64_MAX, image_ready, VK_NULL_HANDLE, &current_image_index);
+    VkResult result = vkAcquireNextImageKHR(device.logical, swap_chain.handle, UINT64_MAX, image_ready, VK_NULL_HANDLE, &current_image_index);
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+        throw std::runtime_error("Failed to acquire swap chain image.");
+
     return current_image_index;
+}
+
+void Display::recreate_swap_chain()
+{
+    vkDeviceWaitIdle(device.logical);
+    destroy_swap_chain();
+
+    create_swap_chain(device, window, surface_format, present_mode);
 }
 
 void Display::present(VkSemaphore wait_for)
@@ -142,5 +162,5 @@ void Display::present(VkSemaphore wait_for)
 
     present_info.pResults = nullptr;
 
-    vkQueuePresentKHR(device->present_queue, &present_info);
+    vkQueuePresentKHR(device.present_queue, &present_info);
 }

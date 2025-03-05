@@ -72,6 +72,10 @@ void Scene::from_file(const std::string& path, Camera& camera)
         const auto mesh = scene->mMeshes[i];
         object_variants[i].mesh.vertices.resize(mesh->mNumVertices);
 
+        bool has_uvs = mesh->GetNumUVChannels() != 0;
+        if (!has_uvs)
+            std::cerr << "Warning: mesh \"" << mesh->mName.C_Str() << "\" has no UVs." << std::endl;
+
         for (size_t j = 0; j < mesh->mNumVertices; j++) {
             Vertex& v = object_variants[i].mesh.vertices[j];
             v.position.x = mesh->mVertices[j].x;
@@ -80,8 +84,12 @@ void Scene::from_file(const std::string& path, Camera& camera)
             v.normal.x = mesh->mNormals[j].x;
             v.normal.y = mesh->mNormals[j].y;
             v.normal.z = mesh->mNormals[j].z;
-            v.uv.x = mesh->mTextureCoords[0][j].x;
-            v.uv.y = mesh->mTextureCoords[0][j].y;
+            if (has_uvs) {
+                v.uv.x = mesh->mTextureCoords[0][j].x;
+                v.uv.y = mesh->mTextureCoords[0][j].y;
+            } else {
+                v.uv = Vec2(0.0f);
+            }
         }
 
         object_variants[i].mesh.tris.resize(mesh->mNumFaces);

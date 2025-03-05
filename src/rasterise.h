@@ -1,13 +1,11 @@
-#ifndef RASTERISER_H_INCLUDED
-#define RASTERISER_H_INCLUDED
+#ifndef RASTERISE_H_INCLUDED
+#define RASTERISE_H_INCLUDED
 
-#include "renderer.h"
+#include "dispatch.h"
+#include "scene.h"
 #include "shader.h"
 
-struct UniformBufferObject;
-
-class Rasteriser : public IRenderer
-    , public IDisplayable
+class Rasteriser
 {
   public:
     Rasteriser(Device& device,
@@ -19,17 +17,11 @@ class Rasteriser : public IRenderer
                VkFormat depth_format);
     ~Rasteriser();
 
-    virtual void set_scene(Dispatcher& dispatcher, const Scene& scene) override;
-    virtual void set_camera(Dispatcher& dispatcher, const Camera& camera) override;
-
-    virtual void begin_render(IRenderTarget* render_target) override;
-    virtual VkSemaphore end_render() override;
-
     static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes();
 
   private:
-    Device* const device;
-    const VkExtent2D extent;
+    Device& device;
+    VkExtent2D extent;
 
     VkRenderPass render_pass;
 
@@ -49,6 +41,13 @@ class Rasteriser : public IRenderer
     VkDeviceMemory instance_buffer_memory;
     std::vector<uint32_t> instance_end_indices;
 
+    struct UniformBufferObject
+    {
+        alignas(16) Mat4 mvp;
+        alignas(16) Vec3 view_pos;
+        alignas(16) Vec3 inv_light_dir_norm;
+        alignas(16) Mat3x4 normal;
+    };
     VkBuffer uniform_buffer;
     VkDeviceMemory uniform_buffer_memory;
     UniformBufferObject* uniform_buffer_map;
@@ -60,31 +59,32 @@ class Rasteriser : public IRenderer
 
     VkSemaphore render_semaphore;
     VkFence render_fence;
-    VkSemaphore image_semaphore;
 
-    VkImage depth_image;
-    VkImageView depth_image_view;
-    VkDeviceMemory depth_image_memory;
-    VkFormat depth_format;
+    const VkFormat depth_format;
 
     const Scene* scene;
     bool in_render;
 
-    virtual VkRenderPass get_render_pass() override { return render_pass; };
-    virtual std::vector<VkImageView> get_extra_attachments() override { return { depth_image_view }; }
+    void set_scene(Dispatcher& dispatcher, const Scene& scene);
+    void set_camera(Dispatcher& dispatcher, const Camera& camera);
+
+    void wait_for_render();
+    void begin_render(VkFramebuffer framebuffer);
+    VkSemaphore end_render(VkSemaphore* wait_for, uint32_t semaphore_count);
+
+    void set_extent(uint32_t width, uint32_t height);
 
     void create_render_pass(VkFormat image_format, VkFormat depth_format);
     void create_descriptor_set_layout();
     void create_pipeline(const Shader& vs, const Shader& ps);
     void create_descriptor_set(Dispatcher& dispatcher);
     void create_command_buffer(Dispatcher& dispatcher);
-    void create_depth_image(VkFormat depth_format, VkExtent2D extent);
     void create_sync_objects();
     void write_command_buffer(VkFramebuffer framebuffer);
 
     void free_scene_buffers();
 
-    friend class UserInterface;
+    friend class RasteriseDisplayer;
 
     Rasteriser(Rasteriser const&) = delete;
     void operator=(Rasteriser const& x) = delete;

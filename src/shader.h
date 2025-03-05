@@ -3,7 +3,6 @@
 
 #include <string>
 
-#include "renderer.h"
 #include "util.h"
 
 class Device;
@@ -19,9 +18,10 @@ class Shader
     void operator=(Shader const&) = delete;
 
     VkShaderModule shader_module;
-    Device const* device;
+    Device& device;
 
     friend class Rasteriser;
+    friend class RayTracer;
 };
 
 #endif

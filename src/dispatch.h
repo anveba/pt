@@ -18,7 +18,7 @@ class Dispatcher
     ~Dispatcher();
 
   private:
-    Device* const device;
+    Device& device;
     const DispatchUsage usage;
 
     VkDescriptorPool descriptor_pool;
@@ -29,6 +29,9 @@ class Dispatcher
 
     void create_descriptor_pool();
     void create_command_pool();
+
+    VkCommandBuffer begin_one_time_use_command_buffer();
+    void end_one_time_use_command_buffer(VkCommandBuffer command_buffer, VkQueue queue);
 
     friend class Rasteriser;
     friend class UserInterface;

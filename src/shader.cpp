@@ -6,7 +6,7 @@
 #include <cassert>
 
 Shader::Shader(Device& device, const std::string& path)
-    : device(&device)
+    : device(device)
 {
     std::vector<char> code = read_bytes(path);
 
@@ -21,5 +21,5 @@ Shader::Shader(Device& device, const std::string& path)
 
 Shader::~Shader()
 {
-    vkDestroyShaderModule(device->logical, shader_module, nullptr);
+    vkDestroyShaderModule(device.logical, shader_module, nullptr);
 }

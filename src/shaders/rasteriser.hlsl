@@ -1,4 +1,4 @@
-struct UBO
+struct UniformBufferObject
 {
 	float4x4 mvp;
   float3 view_pos;
@@ -6,7 +6,7 @@ struct UBO
   float3x3 normal;
 };
 
-cbuffer ubo : register(b0, space0) { UBO ubo; }
+cbuffer ubo : register(b0, space0) { UniformBufferObject ubo; }
 
 struct vs_in {
     [[vk::location(0)]] float3 position : LOCATION0;

@@ -15,11 +15,18 @@ enum DeviceUsage
 
 struct PhysicalDeviceInfo
 {
-    std::string name;
-    VkPhysicalDeviceType type;
+    VkPhysicalDeviceProperties properties;
+    VkPhysicalDeviceFeatures features;
+
     VkDeviceSize heap_size;
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR ray_tracing_properties;
+
+    VkPhysicalDeviceFeatures2 ray_tracing_features2;
+    VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features;
+    VkPhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features;
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features;
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features;
 
     std::optional<uint32_t> graphics_family_idx;
     std::optional<uint32_t> present_family_idx;
@@ -38,7 +45,7 @@ class Device
     Device(VulkanContext& context, DeviceUsage usage, Window* window = nullptr);
     ~Device();
 
-    inline const SwapChainSupport& get_swap_chain_support() { return swap_chain_support; };
+    void query_swap_chain_support(SwapChainSupport& support, const Window& window);
 
     VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_mask);
 
@@ -48,10 +55,11 @@ class Device
                                VkImageTiling tiling,
                                VkFormatFeatureFlags features);
 
+    inline void wait_idle() { vkDeviceWaitIdle(logical); }
+
   private:
     VkPhysicalDevice physical;
     PhysicalDeviceInfo physical_device_info;
-    SwapChainSupport swap_chain_support;
 
     VkDevice logical;
 
@@ -59,7 +67,7 @@ class Device
     VkQueue present_queue;
     VkQueue compute_queue;
 
-    VulkanContext const* context;
+    VulkanContext& context;
     const DeviceUsage usage;
 
     void create_image(VkImage& image,
@@ -75,7 +83,8 @@ class Device
                        VkDeviceMemory& memory,
                        VkDeviceSize size,
                        VkBufferUsageFlags usage,
-                       VkMemoryPropertyFlags mem_flags);
+                       VkMemoryPropertyFlags mem_flags,
+                       VkMemoryAllocateFlags alloc_flags = 0);
 
     void init_physical_device(VkPhysicalDevice handle, VkSurfaceKHR surface);
     void find_physical_device(const std::vector<VkPhysicalDevice>& devices, DeviceUsage usage, VkSurfaceKHR surface);
@@ -88,7 +97,8 @@ class Device
     friend class RayTracer;
     friend class Dispatcher;
     friend class UserInterface;
-    friend class FramebufferChain;
+    friend class RasteriseDisplayer;
+    friend class RayTraceDisplayer;
 
     Device(Device const&) = delete;
     void operator=(Device const&) = delete;

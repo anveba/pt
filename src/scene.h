@@ -42,6 +42,9 @@ class Scene
     std::vector<PointLight> point_lights;
 
     Transform transform;
+
+    Scene(Scene const&) = delete;
+    void operator=(Scene const&) = delete;
 };
 
 #endif

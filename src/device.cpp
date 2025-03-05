@@ -3,7 +3,9 @@
 #include <cassert>
 #include <set>
 
-static void query_swap_chain_support(SwapChainSupport& support, VkPhysicalDevice device, VkSurfaceKHR surface)
+#include "rtext.h"
+
+static void get_swap_chain_support(SwapChainSupport& support, VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &support.capabilities);
 
@@ -28,7 +30,7 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
     : graphics_queue(VK_NULL_HANDLE)
     , present_queue(VK_NULL_HANDLE)
     , compute_queue(VK_NULL_HANDLE)
-    , context(&context)
+    , context(context)
     , usage(usage)
 {
     if (((usage & DEVICE_USAGE_WINDOW_BIT) == 0) != (window == nullptr))
@@ -53,6 +55,9 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
         vkGetDeviceQueue(logical, physical_device_info.graphics_family_idx.value(), 0, &graphics_queue);
     if (physical_device_info.present_family_idx.has_value())
         vkGetDeviceQueue(logical, physical_device_info.present_family_idx.value(), 0, &present_queue);
+
+    if (usage & DEVICE_USAGE_RAY_TRACE_BIT)
+        load_ray_trace_functions(context.instance, logical);
 }
 
 Device::~Device()
@@ -61,31 +66,57 @@ Device::~Device()
     vkDestroyDevice(logical, nullptr);
 }
 
+void Device::query_swap_chain_support(SwapChainSupport& support, const Window& window)
+{
+    get_swap_chain_support(support, physical, window.surface);
+}
+
 static void get_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevice device, VkSurfaceKHR surface)
 {
-    VkPhysicalDeviceProperties properties;
-    vkGetPhysicalDeviceProperties(device, &properties);
-    info.name = properties.deviceName;
-    info.type = properties.deviceType;
+    vkGetPhysicalDeviceProperties(device, &info.properties);
 
-    VkPhysicalDeviceFeatures features;
-    vkGetPhysicalDeviceFeatures(device, &features);
+    vkGetPhysicalDeviceFeatures(device, &info.features);
 
-    VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(device, &memoryProperties);
+    // Get memory info
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(device, &memory_properties);
 
-    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
-        if (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-            info.heap_size = memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size;
+    for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
+        if (memory_properties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+            info.heap_size = memory_properties.memoryHeaps[memory_properties.memoryTypes[i].heapIndex].size;
             break;
         }
     }
 
+    // Get ray tracing properties
     info.ray_tracing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
     VkPhysicalDeviceProperties2 prop2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
     prop2.pNext = &info.ray_tracing_properties;
     vkGetPhysicalDeviceProperties2(device, &prop2);
 
+    // Get ray tracing features
+    info.ray_tracing_features2 = {};
+    info.ray_tracing_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+    info.buffer_device_address_features = {};
+    info.buffer_device_address_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    info.ray_tracing_features2.pNext = &info.buffer_device_address_features;
+
+    info.acceleration_structure_features = {};
+    info.acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    info.buffer_device_address_features.pNext = &info.acceleration_structure_features;
+
+    info.ray_tracing_pipeline_features = {};
+    info.ray_tracing_pipeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+    info.acceleration_structure_features.pNext = &info.ray_tracing_pipeline_features;
+
+    info.ray_query_features = {};
+    info.ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+    info.ray_tracing_pipeline_features.pNext = &info.ray_query_features;
+
+    vkGetPhysicalDeviceFeatures2(device, &info.ray_tracing_features2);
+
+    // Get queue info
     uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
 
@@ -121,12 +152,23 @@ static bool meets_extension_requirements(VkPhysicalDevice device, const std::vec
     return unmet_extensions.empty();
 }
 
+static bool meets_feature_requirements(const PhysicalDeviceInfo& device_info, DeviceUsage usage)
+{
+    if (usage & DEVICE_USAGE_RAY_TRACE_BIT) {
+        return device_info.ray_query_features.rayQuery &&
+               device_info.ray_tracing_pipeline_features.rayTracingPipeline &&
+               device_info.buffer_device_address_features.bufferDeviceAddress &&
+               device_info.acceleration_structure_features.accelerationStructure;
+    }
+    return true;
+}
+
 static bool meets_swap_chain_requirements(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     if (surface == VK_NULL_HANDLE)
         return false;
     SwapChainSupport swap_chain_support;
-    query_swap_chain_support(swap_chain_support, device, surface);
+    get_swap_chain_support(swap_chain_support, device, surface);
     return !swap_chain_support.formats.empty() && !swap_chain_support.present_modes.empty();
 }
 
@@ -136,19 +178,12 @@ static void get_required_extensions(std::vector<const char*>& required_extension
         required_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
     if (usage & DEVICE_USAGE_RAY_TRACE_BIT) {
+        required_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
         required_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
         required_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
         required_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        required_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
     }
-}
-
-static VkDeviceAddress get_buffer_address(VkDevice device, VkBuffer buffer)
-{
-    VkBufferDeviceAddressInfo address_info = {};
-    address_info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    address_info.buffer = buffer;
-
-    return vkGetBufferDeviceAddress(device, &address_info);
 }
 
 static int rank_device_type(VkPhysicalDeviceType type)
@@ -169,8 +204,8 @@ static int rank_device_type(VkPhysicalDeviceType type)
 // TODO: make more accurate comparison (perhaps a scoring system)
 static int compare_physical_device(const PhysicalDeviceInfo& info1, const PhysicalDeviceInfo& info2)
 {
-    if (rank_device_type(info1.type) != rank_device_type(info2.type))
-        return rank_device_type(info2.type) - rank_device_type(info1.type);
+    if (rank_device_type(info1.properties.deviceType) != rank_device_type(info2.properties.deviceType))
+        return rank_device_type(info2.properties.deviceType) - rank_device_type(info1.properties.deviceType);
     return info2.heap_size - info1.heap_size;
 }
 
@@ -190,15 +225,17 @@ void Device::find_physical_device(
 
         PhysicalDeviceInfo info;
         get_physical_device_info(info, device, surface);
-        std::cout << "    " << info.name;
-        if (info.type == VK_PHYSICAL_DEVICE_TYPE_CPU)
+        std::cout << "    " << info.properties.deviceName;
+        if (info.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
             std::cout << " (CPU)";
         std::cout << ", heap size: " << info.heap_size / (1024 * 1024) << " MB" << std::endl;
 
-        bool is_suitable = meets_extension_requirements(device, required_extensions) &&
-                           info.graphics_family_idx.has_value() &&
-                           (!(usage & DEVICE_USAGE_WINDOW_BIT) ||
-                            (meets_swap_chain_requirements(device, surface) && info.present_family_idx.has_value()));
+        bool is_suitable = info.graphics_family_idx.has_value() &&
+                           meets_feature_requirements(info, usage) &&
+                           meets_extension_requirements(device, required_extensions);
+
+        if (usage & DEVICE_USAGE_WINDOW_BIT)
+            is_suitable = is_suitable && info.present_family_idx.has_value() && meets_swap_chain_requirements(device, surface);
 
         if (is_suitable && (best_device == VK_NULL_HANDLE || compare_physical_device(best_device_info, info) > 0)) {
             best_device = device;
@@ -208,11 +245,10 @@ void Device::find_physical_device(
     if (best_device == VK_NULL_HANDLE)
         throw std::runtime_error("No suitable physical device was found.");
 
-    std::cout << "Using physical device " << best_device_info.name << "." << std::endl;
+    std::cout << "Using physical device " << best_device_info.properties.deviceName << "." << std::endl;
 
     physical = best_device;
     physical_device_info = best_device_info;
-    query_swap_chain_support(swap_chain_support, best_device, surface);
 }
 
 void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
@@ -236,20 +272,30 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
         queue_create_infos.push_back(qci);
     }
 
-    VkPhysicalDeviceFeatures deviceFeatures{};
-
     VkDeviceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.pQueueCreateInfos = queue_create_infos.data();
     create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
-    create_info.pEnabledFeatures = &deviceFeatures;
     create_info.enabledExtensionCount = static_cast<uint32_t>(required_extensions.size());
     create_info.ppEnabledExtensionNames = required_extensions.data();
     create_info.enabledLayerCount = static_cast<uint32_t>(context.validation_layers.size());
     create_info.ppEnabledLayerNames = context.validation_layers.data();
 
-    if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create logical device.");
+    if (usage & DEVICE_USAGE_RAY_TRACE_BIT) {
+
+        // Enable ray tracing features. Feature requirement test is assumed to have been passed.
+        create_info.pEnabledFeatures = nullptr;
+        create_info.pNext = &physical_device_info.ray_tracing_features2;
+
+        if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create logical device.");
+    } else {
+        VkPhysicalDeviceFeatures device_features{};
+        create_info.pEnabledFeatures = &device_features;
+
+        if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create logical device.");
+    }
 }
 
 void Device::create_image(
@@ -351,7 +397,8 @@ void Device::create_buffer(
     VkDeviceMemory& memory,
     VkDeviceSize size,
     VkBufferUsageFlags usage,
-    VkMemoryPropertyFlags mem_flags)
+    VkMemoryPropertyFlags mem_flags,
+    VkMemoryAllocateFlags alloc_flags)
 {
     VkBufferCreateInfo buffer_create_info{};
     buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -365,10 +412,16 @@ void Device::create_buffer(
     VkMemoryRequirements mem_requirements;
     vkGetBufferMemoryRequirements(logical, buffer, &mem_requirements);
 
+    VkMemoryAllocateFlagsInfo alloc_flags_info = {};
+    alloc_flags_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+    alloc_flags_info.flags = alloc_flags;
+
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_requirements.size;
     alloc_info.memoryTypeIndex = find_suitable_memory_type(mem_requirements.memoryTypeBits, mem_flags);
+    if (alloc_flags)
+        alloc_info.pNext = &alloc_flags_info;
 
     if (vkAllocateMemory(logical, &alloc_info, nullptr, &memory) != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate memory for vertex buffer.");
