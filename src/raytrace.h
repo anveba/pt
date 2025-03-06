@@ -2,6 +2,7 @@
 #define RAYTRACE_H_INCLUDED
 
 #include "dispatch.h"
+#include "rng.h"
 #include "scene.h"
 #include "shader.h"
 
@@ -45,6 +46,10 @@ class RayTracer
     VkDeviceMemory index_buffer_memory;
     std::vector<uint32_t> index_end_indices;
     VkDeviceAddress index_buffer_address;
+
+    VkBuffer instance_buffer;
+    VkDeviceMemory instance_buffer_memory;
+    VkDeviceAddress instance_buffer_address;
 
     struct UniformBufferObject
     {
@@ -90,6 +95,7 @@ class RayTracer
     const Scene* scene;
     bool in_render;
     uint32_t current_sample;
+    Xshiro128 rng;
 
     void create_dest_image(Dispatcher& dispatcher);
     void write_command_buffer();

@@ -5,10 +5,17 @@
 
 #include <cassert>
 
+struct InstanceData
+{
+    uint32_t vertex_index;
+    uint32_t index_index;
+    uint32_t material_index;
+};
+
 std::vector<VkDescriptorPoolSize> RayTracer::get_descriptor_pool_sizes()
 {
     return { { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },
-             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 } };
 }
 
@@ -26,6 +33,9 @@ RayTracer::RayTracer(
     , scene(nullptr)
     , in_render(false)
 {
+    Splitmix32 sm(1);
+    rng = Xshiro128(sm.next(), sm.next(), sm.next(), sm.next());
+
     create_dest_image(dispatcher);
     create_descriptor_set_layout();
     create_pipeline(ray_gen, ray_miss, ray_closest_hit);
@@ -131,7 +141,7 @@ void RayTracer::create_descriptor_set_layout()
     acceleration_structure_layout_binding.binding = 0;
     acceleration_structure_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
     acceleration_structure_layout_binding.descriptorCount = 1;
-    acceleration_structure_layout_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+    acceleration_structure_layout_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 
     VkDescriptorSetLayoutBinding result_image_layout_binding{};
     result_image_layout_binding.binding = 1;
@@ -143,12 +153,33 @@ void RayTracer::create_descriptor_set_layout()
     uniform_buffer_binding.binding = 2;
     uniform_buffer_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     uniform_buffer_binding.descriptorCount = 1;
-    uniform_buffer_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+    uniform_buffer_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR; // TODO determine which stage descriptors are used in and set the bits accordingly
+
+    VkDescriptorSetLayoutBinding vertex_binding{};
+    vertex_binding.binding = 3;
+    vertex_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    vertex_binding.descriptorCount = 1;
+    vertex_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+
+    VkDescriptorSetLayoutBinding index_binding{};
+    index_binding.binding = 4;
+    index_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    index_binding.descriptorCount = 1;
+    index_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+
+    VkDescriptorSetLayoutBinding object_binding{};
+    object_binding.binding = 5;
+    object_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    object_binding.descriptorCount = 1;
+    object_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 
     std::vector<VkDescriptorSetLayoutBinding> bindings = {
         acceleration_structure_layout_binding,
         result_image_layout_binding,
-        uniform_buffer_binding
+        uniform_buffer_binding,
+        vertex_binding,
+        index_binding,
+        object_binding
     };
 
     VkDescriptorSetLayoutCreateInfo layout_info{};
@@ -177,7 +208,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     ray_gen_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ray_gen_stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
     ray_gen_stage.module = ray_gen.shader_module;
-    ray_gen_stage.pName = "main";
+    ray_gen_stage.pName = "raygeneration_main";
     shader_stages.push_back(ray_gen_stage);
     VkRayTracingShaderGroupCreateInfoKHR ray_gen_group{};
     ray_gen_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -193,7 +224,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     miss_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     miss_stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
     miss_stage.module = ray_miss.shader_module;
-    miss_stage.pName = "main";
+    miss_stage.pName = "miss_main";
     shader_stages.push_back(miss_stage);
     VkRayTracingShaderGroupCreateInfoKHR miss_group{};
     miss_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -209,7 +240,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     closest_hit_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     closest_hit_stage.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
     closest_hit_stage.module = ray_hit.shader_module;
-    closest_hit_stage.pName = "main";
+    closest_hit_stage.pName = "closesthit_main";
     shader_stages.push_back(closest_hit_stage);
     VkRayTracingShaderGroupCreateInfoKHR closest_hit_group{};
     closest_hit_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -231,6 +262,31 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
 
     if (vkCreateRayTracingPipelinesKHR(device.logical, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracing_pipeline_create_info, nullptr, &pipeline) != VK_SUCCESS)
         throw std::runtime_error("Failed to create ray tracing pipeline.");
+}
+
+static VkDescriptorBufferInfo create_buffer_descriptor(VkBuffer buffer, VkDeviceSize size, VkDeviceSize offset = 0)
+{
+    VkDescriptorBufferInfo buffer_descriptor{};
+    buffer_descriptor.buffer = buffer;
+    buffer_descriptor.range = size;
+    buffer_descriptor.offset = offset;
+    return buffer_descriptor;
+}
+
+static VkWriteDescriptorSet write_buffer_descriptor(
+    VkDescriptorSet descriptor_set,
+    VkDescriptorBufferInfo& buffer_descriptor,
+    VkDescriptorType type,
+    uint32_t binding)
+{
+    VkWriteDescriptorSet buffer_write{};
+    buffer_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    buffer_write.dstSet = descriptor_set;
+    buffer_write.descriptorType = type;
+    buffer_write.dstBinding = binding;
+    buffer_write.pBufferInfo = &buffer_descriptor;
+    buffer_write.descriptorCount = 1;
+    return buffer_write;
 }
 
 void RayTracer::create_descriptor_sets(Dispatcher& dispatch)
@@ -258,14 +314,14 @@ void RayTracer::create_descriptor_sets(Dispatcher& dispatch)
 
     acceleration_structure_write.pNext = &descriptor_acceleration_structure_info;
 
-    VkDescriptorImageInfo dest_image_descriptor{};
+    VkDescriptorImageInfo dest_image_descriptor{}; // TODO make helper function for image descriptor info and write
     dest_image_descriptor.imageView = dest_image_view;
     dest_image_descriptor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-    VkDescriptorBufferInfo ubo_descriptor{};
-    ubo_descriptor.buffer = uniform_buffer;
-    ubo_descriptor.range = sizeof(UniformBufferObject);
-    ubo_descriptor.offset = 0;
+    VkDescriptorBufferInfo ubo_descriptor = create_buffer_descriptor(uniform_buffer, sizeof(UniformBufferObject));
+    VkDescriptorBufferInfo vertex_descriptor = create_buffer_descriptor(vertex_buffer, vertex_end_indices.back() * sizeof(Vertex));
+    VkDescriptorBufferInfo index_descriptor = create_buffer_descriptor(index_buffer, index_end_indices.back() * sizeof(uint32_t));
+    VkDescriptorBufferInfo object_descriptor = create_buffer_descriptor(instance_buffer, scene->get_object_variants().size() * sizeof(InstanceData));
 
     VkWriteDescriptorSet result_image_write{};
     result_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -275,18 +331,18 @@ void RayTracer::create_descriptor_sets(Dispatcher& dispatch)
     result_image_write.pImageInfo = &dest_image_descriptor;
     result_image_write.descriptorCount = 1;
 
-    VkWriteDescriptorSet uniform_buffer_write{};
-    uniform_buffer_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    uniform_buffer_write.dstSet = descriptor_set;
-    uniform_buffer_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uniform_buffer_write.dstBinding = 2;
-    uniform_buffer_write.pBufferInfo = &ubo_descriptor;
-    uniform_buffer_write.descriptorCount = 1;
+    VkWriteDescriptorSet uniform_buffer_write = write_buffer_descriptor(descriptor_set, ubo_descriptor, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2);
+    VkWriteDescriptorSet vertex_buffer_write = write_buffer_descriptor(descriptor_set, vertex_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3);
+    VkWriteDescriptorSet index_buffer_write = write_buffer_descriptor(descriptor_set, index_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4);
+    VkWriteDescriptorSet instance_buffer_write = write_buffer_descriptor(descriptor_set, object_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5);
 
-    const std::array<VkWriteDescriptorSet, 3> write_descriptor_sets = {
+    const std::array<VkWriteDescriptorSet, 6> write_descriptor_sets = {
         acceleration_structure_write,
         result_image_write,
-        uniform_buffer_write
+        uniform_buffer_write,
+        vertex_buffer_write,
+        index_buffer_write,
+        instance_buffer_write
     };
     vkUpdateDescriptorSets(device.logical, static_cast<uint32_t>(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, VK_NULL_HANDLE);
 }
@@ -325,6 +381,8 @@ void RayTracer::free_scene_buffers()
     vkFreeMemory(device.logical, vertex_buffer_memory, nullptr);
     vkDestroyBuffer(device.logical, index_buffer, nullptr);
     vkFreeMemory(device.logical, index_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical, instance_buffer, nullptr);
+    vkFreeMemory(device.logical, instance_buffer_memory, nullptr);
 
     vkDestroyBuffer(device.logical, tlas_buffer, nullptr);
     vkFreeMemory(device.logical, tlas_memory, nullptr);
@@ -365,6 +423,8 @@ void RayTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
     all_vertices.reserve(vertex_count);
     std::vector<IndexedTriangle> all_indices;
     all_indices.reserve(tri_count);
+    std::vector<InstanceData> instance_data;
+    all_indices.reserve(scene.get_object_variants().size());
 
     vertex_end_indices.clear();
     vertex_end_indices.reserve(object_variants.size());
@@ -372,6 +432,12 @@ void RayTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
     index_end_indices.reserve(object_variants.size());
 
     for (const ObjectVariant& variant : object_variants) {
+
+        InstanceData data;
+        data.vertex_index = vertex_end_indices.empty() ? 0 : vertex_end_indices.back();
+        data.index_index = index_end_indices.empty() ? 0 : index_end_indices.back();
+        data.material_index = 0; // TODO
+        instance_data.push_back(data);
 
         const auto& vertices = variant.mesh.get_vertices();
         all_vertices.insert(all_vertices.end(), vertices.begin(), vertices.end());
@@ -382,12 +448,12 @@ void RayTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
         index_end_indices.push_back(static_cast<uint32_t>(all_indices.size()) * 3);
     }
 
-    auto usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    auto common_buffer_usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     device.create_buffer(vertex_buffer,
                          vertex_buffer_memory,
                          all_vertices.size() * sizeof(Vertex),
-                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
+                         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | common_buffer_usage,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
@@ -399,7 +465,7 @@ void RayTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
     device.create_buffer(index_buffer,
                          index_buffer_memory,
                          all_indices.size() * sizeof(IndexedTriangle),
-                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
+                         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | common_buffer_usage,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
@@ -407,6 +473,18 @@ void RayTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
                                   all_indices.data(),
                                   all_indices.size() * sizeof(IndexedTriangle));
     index_buffer_address = get_buffer_address(device.logical, index_buffer);
+
+    device.create_buffer(instance_buffer,
+                         instance_buffer_memory,
+                         instance_data.size() * sizeof(InstanceData),
+                         common_buffer_usage,
+                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                         VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
+
+    dispatcher.transfer_to_buffer(instance_buffer,
+                                  instance_data.data(),
+                                  instance_data.size() * sizeof(InstanceData));
+    vertex_buffer_address = get_buffer_address(device.logical, vertex_buffer);
 
     create_blas(dispatcher);
     create_tlas(dispatcher);
@@ -559,7 +637,7 @@ void RayTracer::create_tlas(Dispatcher& dispatcher)
             VkAccelerationStructureInstanceKHR& acceleration_structure_instance = instances.back();
             acceleration_structure_instance = {};
             acceleration_structure_instance.transform = to_vk_transform_matrix(object_variant.instances[i].transform.matrix);
-            acceleration_structure_instance.instanceCustomIndex = 0;
+            acceleration_structure_instance.instanceCustomIndex = i;
             acceleration_structure_instance.mask = 0xFF;
             acceleration_structure_instance.instanceShaderBindingTableRecordOffset = 0;
             acceleration_structure_instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
@@ -751,7 +829,7 @@ void RayTracer::begin_render()
 
     uniform_map->new_samples_mult = 1.0f / (current_sample + 1);
     uniform_map->old_samples_mult = (float)current_sample / (current_sample + 1.0f);
-    uniform_map->seed = current_sample;
+    uniform_map->seed = rng.next();
 
     vkResetCommandBuffer(command_buffer, 0);
 

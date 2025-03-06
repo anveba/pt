@@ -102,7 +102,7 @@ void begin_windowed_application(const Scene& scene, Camera& camera, RenderType r
     Shader ps(device, "bin/rasteriser_pxl.spv");
 
     Shader ray_hit(device, "bin/raygen.spv");
-    Shader ray_miss(device, "bin/raymiss.spv");
+    Shader ray_miss(device, "bin/miss.spv");
     Shader ray_closest_hit(device, "bin/closesthit.spv");
 
     VkFormat depth_format = choose_depth_format(device);
