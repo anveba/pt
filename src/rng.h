@@ -10,10 +10,10 @@
 class Xshiro128
 {
   public:
-    inline Xshiro128();
-    inline Xshiro128(uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3);
+    Xshiro128();
+    Xshiro128(uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3);
 
-    inline uint32_t next();
+    uint32_t next();
 
   private:
     uint32_t s[4];
@@ -23,10 +23,10 @@ class Splitmix32
 {
 
   public:
-    inline Splitmix32();
-    inline Splitmix32(uint32_t state);
+    Splitmix32();
+    Splitmix32(uint32_t state);
 
-    inline uint32_t next();
+    uint32_t next();
 
   private:
     uint32_t state;

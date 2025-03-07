@@ -5,7 +5,7 @@
 
 #include <cassert>
 
-struct InstanceData
+struct ObjectData
 {
     uint32_t vertex_index;
     uint32_t index_index;
@@ -48,6 +48,9 @@ RayTracer::RayTracer(
     create_descriptor_sets(dispatcher);
     create_command_buffer(dispatcher);
     create_sync_objects();
+
+    set_samples(1);
+    set_max_bounces(1);
 }
 
 RayTracer::~RayTracer()
@@ -257,7 +260,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     raytracing_pipeline_create_info.pStages = shader_stages.data();
     raytracing_pipeline_create_info.groupCount = static_cast<uint32_t>(shader_groups.size());
     raytracing_pipeline_create_info.pGroups = shader_groups.data();
-    raytracing_pipeline_create_info.maxPipelineRayRecursionDepth = 1;
+    raytracing_pipeline_create_info.maxPipelineRayRecursionDepth = dispatcher.device.physical_device_info.ray_tracing_properties.maxRayRecursionDepth; // TODO
     raytracing_pipeline_create_info.layout = pipeline_layout;
 
     if (vkCreateRayTracingPipelinesKHR(device.logical, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracing_pipeline_create_info, nullptr, &pipeline) != VK_SUCCESS)
@@ -321,7 +324,7 @@ void RayTracer::create_descriptor_sets(Dispatcher& dispatch)
     VkDescriptorBufferInfo ubo_descriptor = create_buffer_descriptor(uniform_buffer, sizeof(UniformBufferObject));
     VkDescriptorBufferInfo vertex_descriptor = create_buffer_descriptor(vertex_buffer, vertex_end_indices.back() * sizeof(Vertex));
     VkDescriptorBufferInfo index_descriptor = create_buffer_descriptor(index_buffer, index_end_indices.back() * sizeof(uint32_t));
-    VkDescriptorBufferInfo object_descriptor = create_buffer_descriptor(instance_buffer, scene->get_object_variants().size() * sizeof(InstanceData));
+    VkDescriptorBufferInfo object_descriptor = create_buffer_descriptor(object_buffer, scene->get_object_variants().size() * sizeof(ObjectData));
 
     VkWriteDescriptorSet result_image_write{};
     result_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -334,7 +337,7 @@ void RayTracer::create_descriptor_sets(Dispatcher& dispatch)
     VkWriteDescriptorSet uniform_buffer_write = write_buffer_descriptor(descriptor_set, ubo_descriptor, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2);
     VkWriteDescriptorSet vertex_buffer_write = write_buffer_descriptor(descriptor_set, vertex_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3);
     VkWriteDescriptorSet index_buffer_write = write_buffer_descriptor(descriptor_set, index_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4);
-    VkWriteDescriptorSet instance_buffer_write = write_buffer_descriptor(descriptor_set, object_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5);
+    VkWriteDescriptorSet object_buffer_write = write_buffer_descriptor(descriptor_set, object_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5);
 
     const std::array<VkWriteDescriptorSet, 6> write_descriptor_sets = {
         acceleration_structure_write,
@@ -342,12 +345,12 @@ void RayTracer::create_descriptor_sets(Dispatcher& dispatch)
         uniform_buffer_write,
         vertex_buffer_write,
         index_buffer_write,
-        instance_buffer_write
+        object_buffer_write
     };
     vkUpdateDescriptorSets(device.logical, static_cast<uint32_t>(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, VK_NULL_HANDLE);
 }
 
-void RayTracer::create_command_buffer(Dispatcher& dispatch)
+void RayTracer::create_command_buffer(Dispatcher& dispatch) // TODO move command buffer handling outside of path tracer and rasteriser
 {
     VkCommandBufferAllocateInfo cmd_buffer_alloc_info{};
     cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -381,8 +384,8 @@ void RayTracer::free_scene_buffers()
     vkFreeMemory(device.logical, vertex_buffer_memory, nullptr);
     vkDestroyBuffer(device.logical, index_buffer, nullptr);
     vkFreeMemory(device.logical, index_buffer_memory, nullptr);
-    vkDestroyBuffer(device.logical, instance_buffer, nullptr);
-    vkFreeMemory(device.logical, instance_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical, object_buffer, nullptr);
+    vkFreeMemory(device.logical, object_buffer_memory, nullptr);
 
     vkDestroyBuffer(device.logical, tlas_buffer, nullptr);
     vkFreeMemory(device.logical, tlas_memory, nullptr);
@@ -419,72 +422,75 @@ void RayTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
         tri_count += variant.mesh.get_indexed_triangles().size();
     }
 
-    std::vector<Vertex> all_vertices;
-    all_vertices.reserve(vertex_count);
-    std::vector<IndexedTriangle> all_indices;
-    all_indices.reserve(tri_count);
-    std::vector<InstanceData> instance_data;
-    all_indices.reserve(scene.get_object_variants().size());
+    Vertex* all_vertices = new Vertex[vertex_count];
+    uint32_t* all_indices = new uint32_t[tri_count * 3];
+    ObjectData* all_object_data = new ObjectData[object_variants.size()];
 
-    vertex_end_indices.clear();
-    vertex_end_indices.reserve(object_variants.size());
-    index_end_indices.clear();
-    index_end_indices.reserve(object_variants.size());
+    vertex_end_indices.resize(object_variants.size());
+    index_end_indices.resize(object_variants.size());
 
-    for (const ObjectVariant& variant : object_variants) {
+    uint32_t vertex_count_acc = 0, index_count_acc = 0;
 
-        InstanceData data;
-        data.vertex_index = vertex_end_indices.empty() ? 0 : vertex_end_indices.back();
-        data.index_index = index_end_indices.empty() ? 0 : index_end_indices.back();
-        data.material_index = 0; // TODO
-        instance_data.push_back(data);
+    for (size_t i = 0; i < object_variants.size(); i++) {
+        all_object_data[i].vertex_index = vertex_count_acc;
+        all_object_data[i].index_index = index_count_acc;
+        all_object_data[i].material_index = 0;
 
-        const auto& vertices = variant.mesh.get_vertices();
-        all_vertices.insert(all_vertices.end(), vertices.begin(), vertices.end());
-        vertex_end_indices.push_back(static_cast<uint32_t>(all_vertices.size()));
+        const ObjectVariant& variant = object_variants[i];
 
-        const auto& indices = variant.mesh.get_indexed_triangles();
-        all_indices.insert(all_indices.end(), indices.begin(), indices.end());
-        index_end_indices.push_back(static_cast<uint32_t>(all_indices.size()) * 3);
+        memcpy(all_vertices + vertex_count_acc, variant.mesh.get_vertices().data(), variant.mesh.get_vertices().size() * sizeof(Vertex));
+        memcpy(all_indices + index_count_acc, variant.mesh.get_indexed_triangles().data(), variant.mesh.get_indexed_triangles().size() * sizeof(IndexedTriangle));
+
+        vertex_count_acc += variant.mesh.get_vertices().size();
+        index_count_acc += variant.mesh.get_indexed_triangles().size() * 3;
+
+        vertex_end_indices[i] = vertex_count_acc;
+        index_end_indices[i] = index_count_acc;
     }
+
+    assert(vertex_end_indices.back() == vertex_count);
+    assert(index_end_indices.back() == tri_count * 3);
 
     auto common_buffer_usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     device.create_buffer(vertex_buffer,
                          vertex_buffer_memory,
-                         all_vertices.size() * sizeof(Vertex),
+                         vertex_count * sizeof(Vertex),
                          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | common_buffer_usage,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
     dispatcher.transfer_to_buffer(vertex_buffer,
-                                  all_vertices.data(),
-                                  all_vertices.size() * sizeof(Vertex));
+                                  all_vertices,
+                                  vertex_count * sizeof(Vertex));
     vertex_buffer_address = get_buffer_address(device.logical, vertex_buffer);
 
     device.create_buffer(index_buffer,
                          index_buffer_memory,
-                         all_indices.size() * sizeof(IndexedTriangle),
+                         tri_count * 3 * sizeof(uint32_t),
                          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | common_buffer_usage,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
     dispatcher.transfer_to_buffer(index_buffer,
-                                  all_indices.data(),
-                                  all_indices.size() * sizeof(IndexedTriangle));
+                                  all_indices,
+                                  tri_count * 3 * sizeof(uint32_t));
     index_buffer_address = get_buffer_address(device.logical, index_buffer);
 
-    device.create_buffer(instance_buffer,
-                         instance_buffer_memory,
-                         instance_data.size() * sizeof(InstanceData),
+    device.create_buffer(object_buffer,
+                         object_buffer_memory,
+                         object_variants.size() * sizeof(ObjectData),
                          common_buffer_usage,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
-    dispatcher.transfer_to_buffer(instance_buffer,
-                                  instance_data.data(),
-                                  instance_data.size() * sizeof(InstanceData));
-    vertex_buffer_address = get_buffer_address(device.logical, vertex_buffer);
+    dispatcher.transfer_to_buffer(object_buffer,
+                                  all_object_data,
+                                  object_variants.size() * sizeof(ObjectData));
+
+    delete[] all_vertices;
+    delete[] all_indices;
+    delete[] all_object_data;
 
     create_blas(dispatcher);
     create_tlas(dispatcher);
@@ -502,7 +508,21 @@ void RayTracer::set_camera(Dispatcher& dispatcher, const Camera& camera)
     uniform_map->near = camera.near;
     uniform_map->far = camera.far;
 
-    current_sample = 0;
+    samples_taken = 0;
+}
+
+void RayTracer::set_samples(uint32_t samples)
+{
+    // TODO check if in render. But begin and end render should be merged, so this will not be a problem.
+    if (samples == 0)
+        throw std::runtime_error("Samples was zero.");
+    uniform_map->samples = samples;
+}
+
+void RayTracer::set_max_bounces(uint32_t max_bounces)
+{
+    samples_taken = 0;
+    uniform_map->max_bounces = max_bounces;
 }
 
 void RayTracer::create_blas(Dispatcher& dispatcher)
@@ -527,8 +547,8 @@ void RayTracer::create_blas(Dispatcher& dispatcher)
 
         const ObjectVariant& object = scene->get_object_variants()[i];
 
-        VkDeviceOrHostAddressConstKHR vertex_address_const{ .deviceAddress = vertex_buffer_address };
-        VkDeviceOrHostAddressConstKHR index_address_const{ .deviceAddress = index_buffer_address };
+        VkDeviceOrHostAddressConstKHR vertex_address_const{ .deviceAddress = vertex_buffer_address + ((i == 0) ? 0 : (vertex_end_indices[i - 1] * sizeof(Vertex))) };
+        VkDeviceOrHostAddressConstKHR index_address_const{ .deviceAddress = index_buffer_address + ((i == 0) ? 0 : (index_end_indices[i - 1] * sizeof(uint32_t))) };
 
         VkAccelerationStructureGeometryKHR& geometry = geometries[i];
         geometry = {};
@@ -547,10 +567,10 @@ void RayTracer::create_blas(Dispatcher& dispatcher)
         VkAccelerationStructureBuildRangeInfoKHR& range = range_infos[i];
         range = {};
         range.primitiveCount = object.mesh.get_indexed_triangles().size();
-        range.primitiveOffset = (i == 0 ? 0 : index_end_indices[i - 1]) * sizeof(uint32_t);
-        range.firstVertex = i == 0 ? 0 : vertex_end_indices[i - 1];
+        range.primitiveOffset = 0;
+        range.firstVertex = 0;
         range.transformOffset = 0;
-        range_info_ptrs[i] = &range;
+        range_info_ptrs[i] = &range_infos[i];
 
         VkAccelerationStructureBuildGeometryInfoKHR acceleration_structure_build_geometry_info{};
         acceleration_structure_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -636,7 +656,7 @@ void RayTracer::create_tlas(Dispatcher& dispatcher)
             instances.emplace_back();
             VkAccelerationStructureInstanceKHR& acceleration_structure_instance = instances.back();
             acceleration_structure_instance = {};
-            acceleration_structure_instance.transform = to_vk_transform_matrix(object_variant.instances[i].transform.matrix);
+            acceleration_structure_instance.transform = to_vk_transform_matrix(object_variant.instances[j].transform.matrix);
             acceleration_structure_instance.instanceCustomIndex = i;
             acceleration_structure_instance.mask = 0xFF;
             acceleration_structure_instance.instanceShaderBindingTableRecordOffset = 0;
@@ -799,8 +819,40 @@ void RayTracer::write_command_buffer()
     hit_sbt.stride = aligned_handle_size;
     hit_sbt.size = aligned_handle_size;
 
+    // std::vector<VkBufferMemoryBarrier> barriers;
+
+    // auto buffer_barrier = [](VkBuffer buffer, VkDeviceSize size) {
+    //     VkBufferMemoryBarrier barrier{};
+    //     barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    //     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    //     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    //     barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+    //     barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    //     barrier.buffer = buffer;
+    //     barrier.size = size;
+    //     return barrier;
+    // };
+
+    // barriers.emplace_back(buffer_barrier(object_buffer, scene->get_object_variants().size() * sizeof(ObjectData)));
+    // barriers.emplace_back(buffer_barrier(uniform_buffer, sizeof(UniformBufferObject)));
+
+    // vkCmdPipelineBarrier(
+    //     command_buffer,
+    //     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+    //     VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_HOST_BIT,
+    //     0,
+    //     // Memory
+    //     0,
+    //     VK_NULL_HANDLE,
+    //     // Buffers
+    //     static_cast<uint32_t>(barriers.size()),
+    //     barriers.data(),
+    //     // Images
+    //     0,
+    //     VK_NULL_HANDLE);
+
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_layout, 0, 1, &descriptor_set, 0, 0);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
 
     VkStridedDeviceAddressRegionKHR callable_sbt{};
 
@@ -827,9 +879,9 @@ void RayTracer::begin_render()
     if (in_render)
         throw std::runtime_error("Ray tracer is already rendering.");
 
-    uniform_map->new_samples_mult = 1.0f / (current_sample + 1);
-    uniform_map->old_samples_mult = (float)current_sample / (current_sample + 1.0f);
-    uniform_map->seed = rng.next();
+    uniform_map->new_samples_mult = (float)uniform_map->samples / (samples_taken + uniform_map->samples);
+    uniform_map->old_samples_mult = (float)samples_taken / (samples_taken + uniform_map->samples);
+    uniform_map->seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
 
     vkResetCommandBuffer(command_buffer, 0);
 
@@ -874,7 +926,7 @@ VkSemaphore RayTracer::end_render(VkSemaphore* wait_for, uint32_t semaphore_coun
     if (vkQueueSubmit(device.graphics_queue, 1, &submit_info, render_fence) != VK_SUCCESS)
         throw std::runtime_error("Failed to submit to queue.");
 
-    current_sample++;
+    samples_taken += uniform_map->samples;
     in_render = false;
     return render_semaphore;
 }

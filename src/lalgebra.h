@@ -12,6 +12,7 @@ typedef glm::vec2 Vec2;
 typedef glm::vec3 Vec3;
 typedef glm::vec4 Vec4;
 typedef glm::quat Quaternion;
+typedef glm::uvec4 Uint4;
 
 Mat4 translation(Vec3 t);
 Mat4 rotation(Vec3 axis, float angle);

@@ -46,12 +46,16 @@ static void process_scene_node(std::vector<ObjectVariant>& variants, aiNode* nod
 void Scene::from_file(const std::string& path, Camera& camera)
 {
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals);
+    const aiScene* scene = importer.ReadFile(
+        path,
+        aiProcess_Triangulate |
+            aiProcess_FlipUVs |
+            aiProcess_GenNormals |
+            aiProcess_JoinIdenticalVertices); // TODO: take a look at post processing steps
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         std::runtime_error("Could not load scene at " + path + ": " + importer.GetErrorString());
 
-    std::cout << "Scene has " << scene->mNumCameras << " cameras." << std::endl;
     if (scene->mNumCameras > 0) {
         const auto& scene_cam = scene->mCameras[0];
         camera.position.x = scene_cam->mPosition.x;
@@ -103,4 +107,20 @@ void Scene::from_file(const std::string& path, Camera& camera)
     }
 
     process_scene_node(object_variants, scene->mRootNode, Mat4(1.0f));
+
+    size_t instance_count = 0, unique_vertex_count = 0, unique_triangle_count = 0, triangle_count = 0;
+    for (const ObjectVariant& variant : object_variants) {
+        instance_count += variant.instances.size();
+        unique_vertex_count += variant.mesh.get_vertices().size();
+        unique_triangle_count += variant.mesh.get_indexed_triangles().size();
+        triangle_count += variant.instances.size() * variant.mesh.get_indexed_triangles().size();
+    }
+    std::cout << "Scene \"" << scene->mName.C_Str() << "\" has:\n"
+              << "    " << scene->mNumCameras << " cameras\n"
+              << "    " << object_variants.size() << " meshes\n"
+              << "    " << instance_count << " instances\n"
+              << "    " << unique_vertex_count << " unique vertices\n"
+              << "    " << unique_triangle_count << " unique triangles\n"
+              << "    " << triangle_count << " total triangles\n"
+              << std::endl;
 }

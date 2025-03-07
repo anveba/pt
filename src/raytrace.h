@@ -20,9 +20,14 @@ class RayTracer
 
     static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes();
 
+    uint32_t get_samples_per_render() { return uniform_map->samples; }
+    uint32_t get_max_bounces() { return uniform_map->max_bounces; }
+
   private:
     void set_scene(Dispatcher& dispatcher, const Scene& scene);
     void set_camera(Dispatcher& dispatcher, const Camera& camera);
+    void set_samples(uint32_t samples);
+    void set_max_bounces(uint32_t max_bounces);
 
     void wait_for_render();
     void begin_render();
@@ -47,9 +52,9 @@ class RayTracer
     std::vector<uint32_t> index_end_indices;
     VkDeviceAddress index_buffer_address;
 
-    VkBuffer instance_buffer;
-    VkDeviceMemory instance_buffer_memory;
-    VkDeviceAddress instance_buffer_address;
+    VkBuffer object_buffer;
+    VkDeviceMemory object_buffer_memory;
+    VkDeviceAddress object_buffer_address;
 
     struct UniformBufferObject
     {
@@ -59,7 +64,9 @@ class RayTracer
         alignas(4) float far;
         alignas(4) float old_samples_mult;
         alignas(4) float new_samples_mult;
-        alignas(4) uint32_t seed;
+        alignas(16) Uint4 seed;
+        alignas(4) uint32_t samples;
+        alignas(4) uint32_t max_bounces;
     };
     VkBuffer uniform_buffer;
     VkDeviceMemory uniform_buffer_memory;
@@ -94,7 +101,8 @@ class RayTracer
 
     const Scene* scene;
     bool in_render;
-    uint32_t current_sample;
+
+    uint32_t samples_taken;
     Xshiro128 rng;
 
     void create_dest_image(Dispatcher& dispatcher);

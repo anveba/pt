@@ -419,10 +419,10 @@ void Rasteriser::write_command_buffer(VkFramebuffer framebuffer)
     assert(vertex_end_indices.size() == index_end_indices.size());
     size_t variant_count = vertex_end_indices.size();
     for (size_t i = 0; i < variant_count; i++) {
-        uint32_t index_count = index_end_indices[i] - (i == 0 ? 0 : index_end_indices[i - 1]);
-        uint32_t instance_count = instance_end_indices[i] - (i == 0 ? 0 : instance_end_indices[i - 1]);
-        uint32_t index_index = i == 0 ? 0 : index_end_indices[i - 1];
-        uint32_t vertex_index = i == 0 ? 0 : vertex_end_indices[i - 1];
+        uint32_t index_count = index_end_indices[i] - ((i == 0) ? 0 : index_end_indices[i - 1]);
+        uint32_t instance_count = instance_end_indices[i] - ((i == 0) ? 0 : instance_end_indices[i - 1]);
+        uint32_t index_index = ((i == 0) ? 0 : index_end_indices[i - 1]);
+        uint32_t vertex_index = ((i == 0) ? 0 : vertex_end_indices[i - 1]);
         vkCmdDrawIndexed(command_buffer, index_count, instance_count, index_index, vertex_index, 0);
     }
 }

@@ -65,6 +65,10 @@ void RasteriseDisplayer::get_debug_info(RenderDebugInfo& info)
     info = {};
 }
 
+void RasteriseDisplayer::set_settings(const UiControlPanel& control_panel)
+{
+}
+
 VkRenderPass RasteriseDisplayer::get_render_pass()
 {
     return rasteriser.render_pass;

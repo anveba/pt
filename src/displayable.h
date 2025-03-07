@@ -6,6 +6,7 @@
 class Dispatcher;
 class Scene;
 class Camera;
+struct UiControlPanel;
 
 enum RenderType
 {
@@ -33,6 +34,7 @@ class IDisplayable
     virtual void end_render() = 0;
 
     virtual void get_debug_info(RenderDebugInfo& info) = 0;
+    virtual void set_settings(const UiControlPanel& control_panel) = 0;
     virtual RenderType render_type() = 0;
 
   private:

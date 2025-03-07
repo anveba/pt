@@ -55,6 +55,8 @@ class Device
                                VkImageTiling tiling,
                                VkFormatFeatureFlags features);
 
+    inline const PhysicalDeviceInfo& get_physical_device_info() { return physical_device_info; }
+
     inline void wait_idle() { vkDeviceWaitIdle(logical); }
 
   private:

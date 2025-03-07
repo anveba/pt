@@ -21,6 +21,7 @@ class RayTraceDisplayer : public IDisplayable
     virtual void end_render() override;
 
     virtual void get_debug_info(RenderDebugInfo& info) override;
+    virtual void set_settings(const UiControlPanel& control_panel) override;
     virtual RenderType render_type() override { return RENDER_TYPE_PATH_TRACE; };
 
   private:

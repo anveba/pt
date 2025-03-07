@@ -71,7 +71,7 @@ void Device::query_swap_chain_support(SwapChainSupport& support, const Window& w
     get_swap_chain_support(support, physical, window.surface);
 }
 
-static void get_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevice device, VkSurfaceKHR surface)
+static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     vkGetPhysicalDeviceProperties(device, &info.properties);
 
@@ -224,7 +224,7 @@ void Device::find_physical_device(
     for (auto device : devices) {
 
         PhysicalDeviceInfo info;
-        get_physical_device_info(info, device, surface);
+        query_physical_device_info(info, device, surface);
         std::cout << "    " << info.properties.deviceName;
         if (info.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
             std::cout << " (CPU)";
@@ -249,6 +249,9 @@ void Device::find_physical_device(
 
     physical = best_device;
     physical_device_info = best_device_info;
+
+    if (usage & DEVICE_USAGE_RAY_TRACE_BIT)
+        std::cout << "Device has a maximum ray recursion depth of " << physical_device_info.ray_tracing_properties.maxRayRecursionDepth << "." << std::endl;
 }
 
 void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)

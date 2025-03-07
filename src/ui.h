@@ -23,12 +23,14 @@ struct UiInfo
 struct UiControlPanel
 {
     RenderType render_type;
+    uint32_t max_bounces;
+    uint32_t samples_per_frame;
 };
 
 class UserInterface
 {
   public:
-    UserInterface(Dispatcher& dispatcher, UiControlPanel& control_panel);
+    UserInterface(UiControlPanel& control_panel);
 
     void new_frame(const UiInfo& info);
     void render();

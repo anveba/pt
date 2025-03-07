@@ -84,7 +84,7 @@ std::vector<VkDescriptorPoolSize> UserInterface::get_descriptor_pool_sizes()
     return { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE } };
 }
 
-UserInterface::UserInterface(Dispatcher& dispatcher, UiControlPanel& control_panel)
+UserInterface::UserInterface(UiControlPanel& control_panel)
     : control_panel(&control_panel)
 {
     if (!ui_initialied || ui_displayer == nullptr)
@@ -108,6 +108,10 @@ void UserInterface::new_frame(const UiInfo& info)
 
     ImGui::Begin("Control Panel");
     ImGui::Combo("Rendering", (int*)&control_panel->render_type, "Path tracing\0Rasterisation\0");
+    if (control_panel->render_type == RENDER_TYPE_PATH_TRACE) {
+        ImGui::SliderInt("Samples per frame", (int*)&control_panel->samples_per_frame, 1, 16);
+        ImGui::SliderInt("Max bounces", (int*)&control_panel->max_bounces, 1, 16);
+    }
     ImGui::End();
 }
 

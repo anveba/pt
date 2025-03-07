@@ -2,6 +2,7 @@
 
 #include "display.h"
 #include "raytrace.h"
+#include "ui.h"
 
 RayTraceDisplayer::RayTraceDisplayer(Display& display, RayTracer& ray_tracer)
     : display(display)
@@ -70,7 +71,15 @@ void RayTraceDisplayer::end_render()
 void RayTraceDisplayer::get_debug_info(RenderDebugInfo& info)
 {
     info = {};
-    info.samples = ray_tracer.current_sample + 1;
+    info.samples = ray_tracer.samples_taken + ray_tracer.get_samples_per_render();
+}
+
+void RayTraceDisplayer::set_settings(const UiControlPanel& control_panel)
+{
+    if (ray_tracer.get_max_bounces() != control_panel.max_bounces)
+        ray_tracer.set_max_bounces(control_panel.max_bounces);
+    if (ray_tracer.get_samples_per_render() != control_panel.samples_per_frame)
+        ray_tracer.set_samples(control_panel.samples_per_frame);
 }
 
 VkRenderPass RayTraceDisplayer::get_render_pass()

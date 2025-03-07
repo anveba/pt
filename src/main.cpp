@@ -18,7 +18,7 @@ void render_loop(IDisplayable** displayers, Camera& camera, Display& display, Di
     IDisplayable* current_displayer = displayers[control_panel.render_type];
 
     UserInterface::init_vulkan(dispatcher, *current_displayer);
-    UserInterface ui(dispatcher, control_panel);
+    UserInterface ui(control_panel);
 
     FpsCounter fps_counter(0.2f);
     fps_counter.restart();
@@ -61,6 +61,8 @@ void render_loop(IDisplayable** displayers, Camera& camera, Display& display, Di
         if (camera_rotated || camera_moved || update_camera)
             current_displayer->set_camera(dispatcher, camera);
 
+        current_displayer->set_settings(control_panel);
+
         current_displayer->begin_render();
 
         fps_counter.add_frame();
@@ -96,8 +98,6 @@ void begin_windowed_application(const Scene& scene, Camera& camera, RenderType r
     Display display(device, window, surface_format, present_mode);
     camera.aspect_ratio = float(display.get_extent().width) / display.get_extent().height;
 
-    UiControlPanel control_panel{ .render_type = render_type };
-
     Shader vs(device, "bin/rasteriser_vtx.spv");
     Shader ps(device, "bin/rasteriser_pxl.spv");
 
@@ -114,6 +114,10 @@ void begin_windowed_application(const Scene& scene, Camera& camera, RenderType r
     RayTracer ray_tracer(device, dispatcher, scene, ray_hit, ray_miss, ray_closest_hit, display.get_extent());
     RayTraceDisplayer ray_trace_displayer(display, ray_tracer);
     ray_trace_displayer.set_camera(dispatcher, camera);
+
+    UiControlPanel control_panel{ .render_type = render_type,
+                                  .max_bounces = ray_tracer.get_max_bounces(),
+                                  .samples_per_frame = ray_tracer.get_samples_per_render() };
 
     IDisplayable* displayers[MAX_RENDER_TYPE]{ &ray_trace_displayer, &rasterise_displayer };
 
@@ -148,7 +152,7 @@ int main(int argc, char** argv)
     validation_layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
-    RenderType render_type = RENDER_TYPE_PATH_TRACE;
+    RenderType render_type = RENDER_TYPE_RASTERISE;
     bool headless = false;
 
     if (headless) {
