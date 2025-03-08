@@ -1,0 +1,4 @@
+#ifndef ACCSTRUCT_H_INCLUDED
+#define ACCSTRUCT_H_INCLUDED
+
+#endif

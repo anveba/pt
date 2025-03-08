@@ -22,11 +22,10 @@ struct PhysicalDeviceInfo
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR ray_tracing_properties;
 
-    VkPhysicalDeviceFeatures2 ray_tracing_features2;
-    VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features;
     VkPhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features;
     VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features;
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features;
+    VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features;
 
     std::optional<uint32_t> graphics_family_idx;
     std::optional<uint32_t> present_family_idx;

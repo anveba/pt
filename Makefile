@@ -1,42 +1,59 @@
-CC := g++
-FLAGS := -Wall -std=c++20 -march=native -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZERO_TO_ONE
-DEBUG_FLAGS = -p -g3
-RELEASE_FLAGS = -Ofast -flto -DNDEBUG
-INCLUDE := -Isrc  -Iinclude -Iinclude/vulkan -Iinclude/imgui
-LINK := -lvulkan `pkg-config sdl3 --libs` -lassimp
+SRC_DIR = src vendor
+OBJ_DIR = obj
+OUT_DIR = bin
+SHADER_DIR = shaders 
 
-CCFLAGS := $(FLAGS) $(INCLUDE) $(LINK)
-LDFLAGS := $(FLAGS)
+CXX = g++
+GCC = gcc
+DXC = dxc
 
-BIN_PATH := bin
-OBJ_PATH := obj
-SRC_PATH := src
-VENDOR_PATH := vendor
+CXX_FLAGS := -Wall -std=c++20 -march=native -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZERO_TO_ONE
+CXX_DEBUG_FLAGS = -p -g3 -DDEBUG
+CXX_RELEASE_FLAGS = -O2 -flto -DNDEBUG
+CXX_INCLUDE := -Isrc  -Iinclude -Iinclude/vulkan -Iinclude/imgui
+CXX_LINK := -lvulkan `pkg-config sdl3 --libs` -lassimp
+DXC_FLAGS = -spirv -E main -fspv-target-env=vulkan1.3
 
 TARGET_NAME := pt
-TARGET := $(BIN_PATH)/$(TARGET_NAME)
+TARGET := $(OUT_DIR)/$(TARGET_NAME)
 
-SRC := $(shell find $(SRC_PATH)/ -name "*.cpp")
-VENDOR := $(shell find $(VENDOR_PATH)/ -name "*.cpp")
-OBJ := $(addprefix $(OBJ_PATH)/, $(addsuffix .o, $(notdir $(basename $(SRC)))))
+CPP_SRC = $(shell find $(SRC_DIR) -name '*.cpp')
+CPP_OBJECTS = $(CPP_SRC:%=$(OBJ_DIR)/%.o)
 
-CLEAN_LIST := $(TARGET) $(OBJ)
+SHADER_SRC = $(shell find $(SHADER_DIR) -name '*.hlsl')
+SHADER_OBJECTS = $(SHADER_SRC:%=$(OBJ_DIR)/%.i)
+SHADER_SPV = $(SHADER_SRC:%.hlsl=$(OUT_DIR)/%.spv)
 
-default: release
+all: release
 
-.PHONY: makedir
-makedir:
-	@mkdir -p $(BIN_PATH) $(OBJ_PATH)
+debug: CXX_FLAGS += $(CXX_DEBUG_FLAGS)
+debug: $(TARGET) $(SHADER_SPV)
 
-.PHONY: release
-release: makedir
-	$(CC) -o $(TARGET) $(SRC) $(VENDOR) $(CCFLAGS) $(RELEASE_FLAGS)
+release: CXX_FLAGS += $(CXX_RELEASE_FLAGS)
+release: $(TARGET) $(SHADER_SPV)
 
-.PHONY: debug
-debug: makedir
-	$(CC) -o $(TARGET) $(SRC) $(VENDOR) $(CCFLAGS) $(DEBUG_FLAGS)
+$(TARGET): $(CPP_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPP_OBJECTS) -o $@ $(CXX_LINK)
 
-.PHONY: clean
+$(OBJ_DIR)/%.cpp.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXX_FLAGS) $(CXX_INCLUDE) -c $< -o $@
+
+$(OUT_DIR)/%.spv: $(OBJ_DIR)/%.hlsl.i
+	@mkdir -p $(dir $@)
+	$(DXC) $(DXC_FLAGS) -T $(call get_shader_model,$(notdir $<)) -Fo $@ $<
+
+$(OBJ_DIR)/%.hlsl.i: %.hlsl
+	@mkdir -p $(dir $@)
+	$(GCC) -xc -E $< -o $@
+
+get_shader_model = \
+	$(if $(findstring .vs,$1),vs_6_0, \
+	$(if $(findstring .ps,$1),ps_6_0, \
+	lib_6_3))
+
 clean:
-	@echo CLEAN $(CLEAN_LIST)
-	@rm -f $(CLEAN_LIST)
+	rm -rf $(OBJ_DIR) $(OUT_DIR)
+
+.PHONY: all debug release clean

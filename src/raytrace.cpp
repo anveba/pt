@@ -211,7 +211,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     ray_gen_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ray_gen_stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
     ray_gen_stage.module = ray_gen.shader_module;
-    ray_gen_stage.pName = "raygeneration_main";
+    ray_gen_stage.pName = "main";
     shader_stages.push_back(ray_gen_stage);
     VkRayTracingShaderGroupCreateInfoKHR ray_gen_group{};
     ray_gen_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -227,7 +227,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     miss_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     miss_stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
     miss_stage.module = ray_miss.shader_module;
-    miss_stage.pName = "miss_main";
+    miss_stage.pName = "main";
     shader_stages.push_back(miss_stage);
     VkRayTracingShaderGroupCreateInfoKHR miss_group{};
     miss_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -243,7 +243,7 @@ void RayTracer::create_pipeline(Shader& ray_gen, Shader& ray_miss, Shader& ray_h
     closest_hit_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     closest_hit_stage.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
     closest_hit_stage.module = ray_hit.shader_module;
-    closest_hit_stage.pName = "closesthit_main";
+    closest_hit_stage.pName = "main";
     shader_stages.push_back(closest_hit_stage);
     VkRayTracingShaderGroupCreateInfoKHR closest_hit_group{};
     closest_hit_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;

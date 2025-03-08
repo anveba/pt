@@ -98,17 +98,16 @@ void begin_windowed_application(const Scene& scene, Camera& camera, RenderType r
     Display display(device, window, surface_format, present_mode);
     camera.aspect_ratio = float(display.get_extent().width) / display.get_extent().height;
 
-    Shader vs(device, "bin/rasteriser_vtx.spv");
-    Shader ps(device, "bin/rasteriser_pxl.spv");
+    Shader vs(device, "bin/shaders/rasterise.vs.spv");
+    Shader ps(device, "bin/shaders/rasterise.ps.spv");
 
-    Shader ray_hit(device, "bin/raygen.spv");
-    Shader ray_miss(device, "bin/miss.spv");
-    Shader ray_closest_hit(device, "bin/closesthit.spv");
+    Shader ray_hit(device, "bin/shaders/pathtrace.rg.spv");
+    Shader ray_miss(device, "bin/shaders/pathtrace.ms.spv");
+    Shader ray_closest_hit(device, "bin/shaders/pathtrace.ch.spv");
 
     VkFormat depth_format = choose_depth_format(device);
-    Rasteriser rasteriser(device, dispatcher, vs, ps, display.get_extent(), surface_format.format, depth_format);
+    Rasteriser rasteriser(device, dispatcher, scene, vs, ps, display.get_extent(), surface_format.format, depth_format);
     RasteriseDisplayer rasterise_displayer(display, rasteriser);
-    rasterise_displayer.set_scene(dispatcher, scene);
     rasterise_displayer.set_camera(dispatcher, camera);
 
     RayTracer ray_tracer(device, dispatcher, scene, ray_hit, ray_miss, ray_closest_hit, display.get_extent());

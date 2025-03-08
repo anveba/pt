@@ -95,26 +95,26 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
     vkGetPhysicalDeviceProperties2(device, &prop2);
 
     // Get ray tracing features
-    info.ray_tracing_features2 = {};
-    info.ray_tracing_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    VkPhysicalDeviceFeatures2 features2 = {};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.pNext = &info.buffer_device_address_features;
 
     info.buffer_device_address_features = {};
     info.buffer_device_address_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-    info.ray_tracing_features2.pNext = &info.buffer_device_address_features;
+    info.buffer_device_address_features.pNext = &info.acceleration_structure_features;
 
     info.acceleration_structure_features = {};
     info.acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-    info.buffer_device_address_features.pNext = &info.acceleration_structure_features;
+    info.acceleration_structure_features.pNext = &info.ray_tracing_pipeline_features;
 
     info.ray_tracing_pipeline_features = {};
     info.ray_tracing_pipeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-    info.acceleration_structure_features.pNext = &info.ray_tracing_pipeline_features;
+    info.ray_tracing_pipeline_features.pNext = &info.ray_query_features;
 
     info.ray_query_features = {};
     info.ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
-    info.ray_tracing_pipeline_features.pNext = &info.ray_query_features;
 
-    vkGetPhysicalDeviceFeatures2(device, &info.ray_tracing_features2);
+    vkGetPhysicalDeviceFeatures2(device, &features2);
 
     // Get queue info
     uint32_t queue_family_count = 0;
@@ -259,20 +259,20 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
     std::vector<const char*> required_extensions;
     get_required_extensions(required_extensions, usage);
 
-    std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
     std::set<uint32_t> unique_queue_families = {
         physical_device_info.graphics_family_idx.value(),
         physical_device_info.present_family_idx.value()
     };
+    std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
 
-    float queuePriority = 1.0f;
+    float queue_priority = 1.0f;
     for (uint32_t queue_family_idx : unique_queue_families) {
-        VkDeviceQueueCreateInfo qci{};
-        qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        qci.queueFamilyIndex = queue_family_idx;
-        qci.queueCount = 1;
-        qci.pQueuePriorities = &queuePriority;
-        queue_create_infos.push_back(qci);
+        VkDeviceQueueCreateInfo queue_create_info{};
+        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info.queueFamilyIndex = queue_family_idx;
+        queue_create_info.queueCount = 1;
+        queue_create_info.pQueuePriorities = &queue_priority;
+        queue_create_infos.push_back(queue_create_info);
     }
 
     VkDeviceCreateInfo create_info{};
@@ -284,21 +284,23 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
     create_info.enabledLayerCount = static_cast<uint32_t>(context.validation_layers.size());
     create_info.ppEnabledLayerNames = context.validation_layers.data();
 
+    VkPhysicalDeviceFeatures2 features2 = {};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.features = {};
+    create_info.pNext = &features2;
+    create_info.pEnabledFeatures = nullptr;
+
     if (usage & DEVICE_USAGE_RAY_TRACE_BIT) {
-
         // Enable ray tracing features. Feature requirement test is assumed to have been passed.
-        create_info.pEnabledFeatures = nullptr;
-        create_info.pNext = &physical_device_info.ray_tracing_features2;
-
-        if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)
-            throw std::runtime_error("Failed to create logical device.");
-    } else {
-        VkPhysicalDeviceFeatures device_features{};
-        create_info.pEnabledFeatures = &device_features;
-
-        if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)
-            throw std::runtime_error("Failed to create logical device.");
+        features2.pNext = &physical_device_info.buffer_device_address_features;
+        physical_device_info.buffer_device_address_features.pNext = &physical_device_info.acceleration_structure_features;
+        physical_device_info.acceleration_structure_features.pNext = &physical_device_info.ray_tracing_pipeline_features;
+        physical_device_info.ray_tracing_pipeline_features.pNext = &physical_device_info.ray_query_features;
+        physical_device_info.ray_query_features.pNext = nullptr;
     }
+
+    if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create logical device.");
 }
 
 void Device::create_image(

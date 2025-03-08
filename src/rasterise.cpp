@@ -62,6 +62,7 @@ std::vector<VkDescriptorPoolSize> Rasteriser::get_descriptor_pool_sizes()
 Rasteriser::Rasteriser(
     Device& device,
     Dispatcher& dispatcher,
+    const Scene& scene,
     const Shader& vs,
     const Shader& ps,
     VkExtent2D extent,
@@ -80,6 +81,7 @@ Rasteriser::Rasteriser(
     device.create_buffer(uniform_buffer, uniform_buffer_memory, sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     vkMapMemory(device.logical, uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, (void**)&uniform_buffer_map);
 
+    set_scene(dispatcher, scene);
     create_descriptor_set(dispatcher);
     create_command_buffer(dispatcher);
     create_sync_objects();
@@ -186,12 +188,12 @@ void Rasteriser::create_pipeline(const Shader& vs, const Shader& ps)
     shader_stage_create_infos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stage_create_infos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     shader_stage_create_infos[0].module = vs.shader_module;
-    shader_stage_create_infos[0].pName = "vs_main";
+    shader_stage_create_infos[0].pName = "main";
 
     shader_stage_create_infos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shader_stage_create_infos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     shader_stage_create_infos[1].module = ps.shader_module;
-    shader_stage_create_infos[1].pName = "ps_main";
+    shader_stage_create_infos[1].pName = "main";
 
     const std::vector<VkDynamicState> dynamic_states = {
         VK_DYNAMIC_STATE_VIEWPORT,

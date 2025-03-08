@@ -10,6 +10,7 @@ class Rasteriser
   public:
     Rasteriser(Device& device,
                Dispatcher& dispatcher,
+               const Scene& scene,
                const Shader& vs,
                const Shader& ps,
                VkExtent2D extent,
