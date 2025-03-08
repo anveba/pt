@@ -10,7 +10,7 @@ DXC = dxc
 CXX_FLAGS := -Wall -std=c++20 -march=native -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZERO_TO_ONE
 CXX_DEBUG_FLAGS = -p -g3 -DDEBUG
 CXX_RELEASE_FLAGS = -O2 -flto -DNDEBUG
-CXX_INCLUDE := -Isrc  -Iinclude -Iinclude/vulkan -Iinclude/imgui
+CXX_INCLUDE := -Isrc -Iinclude -Iinclude/vulkan -Iinclude/imgui
 CXX_LINK := -lvulkan `pkg-config sdl3 --libs` -lassimp
 DXC_FLAGS = -spirv -E main -fspv-target-env=vulkan1.3
 

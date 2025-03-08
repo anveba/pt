@@ -6,14 +6,15 @@
 #include <vector>
 #include <vulkan.h>
 
-#define VK_ASSERT(e)                                                                        \
-    {                                                                                       \
-        static_assert(std::is_same<decltype(e), VkResult>::value, "type must be VkResult"); \
-        if (e) {                                                                            \
-            std::cerr << "Vulkan error: " << e << std::endl;                                \
-            exit(1);                                                                        \
-        }                                                                                   \
-    }
+#define NO_COPY(type)           \
+    type(const type&) = delete; \
+    void operator=(const type&) = delete
+
+enum RenderType
+{
+    RENDER_TYPE_PATH_TRACE = 0,
+    RENDER_TYPE_RASTERISE = 1
+};
 
 std::vector<char> read_bytes(const std::string& path);
 
