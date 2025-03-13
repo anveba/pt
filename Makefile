@@ -4,7 +4,6 @@ OUT_DIR = bin
 SHADER_DIR = shaders 
 
 CXX = g++
-GCC = gcc
 DXC = dxc
 
 CXX_FLAGS := -Wall -std=c++20 -march=native -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -12,7 +11,7 @@ CXX_DEBUG_FLAGS = -p -g3 -DDEBUG
 CXX_RELEASE_FLAGS = -O2 -flto -DNDEBUG
 CXX_INCLUDE := -Isrc -Iinclude -Iinclude/vulkan -Iinclude/imgui
 CXX_LINK := -lvulkan `pkg-config sdl3 --libs` -lassimp
-DXC_FLAGS = -spirv -E main -fspv-target-env=vulkan1.3
+DXC_FLAGS = -spirv -E main -fspv-target-env=vulkan1.3 -Wall -O3
 
 TARGET_NAME := pt
 TARGET := $(OUT_DIR)/$(TARGET_NAME)
@@ -21,7 +20,6 @@ CPP_SRC = $(shell find $(SRC_DIR) -name '*.cpp')
 CPP_OBJECTS = $(CPP_SRC:%=$(OBJ_DIR)/%.o)
 
 SHADER_SRC = $(shell find $(SHADER_DIR) -name '*.hlsl')
-SHADER_OBJECTS = $(SHADER_SRC:%=$(OBJ_DIR)/%.i)
 SHADER_SPV = $(SHADER_SRC:%.hlsl=$(OUT_DIR)/%.spv)
 
 all: release
@@ -40,13 +38,9 @@ $(OBJ_DIR)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXX_FLAGS) $(CXX_INCLUDE) -c $< -o $@
 
-$(OUT_DIR)/%.spv: $(OBJ_DIR)/%.hlsl.i
+$(OUT_DIR)/%.spv: %.hlsl
 	@mkdir -p $(dir $@)
 	$(DXC) $(DXC_FLAGS) -T $(call get_shader_model,$(notdir $<)) -Fo $@ $<
-
-$(OBJ_DIR)/%.hlsl.i: %.hlsl
-	@mkdir -p $(dir $@)
-	$(GCC) -xc -E $< -o $@
 
 get_shader_model = \
 	$(if $(findstring .vs,$1),vs_6_0, \

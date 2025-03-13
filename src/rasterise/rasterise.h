@@ -1,14 +1,17 @@
 #ifndef RASTERISE_RASTERISE_H_INCLUDED
 #define RASTERISE_RASTERISE_H_INCLUDED
 
-#include "graphics/dispatch.h"
+#include "graphics/cmdpool.h"
+#include "graphics/descset.h"
 #include "graphics/shader.h"
 #include "scene/scene.h"
 
 class Rasteriser
 {
   public:
-    Rasteriser(Dispatcher& dispatcher,
+    Rasteriser(Device& device,
+               DescriptorPool& descriptor_pool,
+               CommandPool& command_pool,
                const Scene& scene,
                VkExtent2D extent,
                VkFormat image_format,
@@ -50,35 +53,23 @@ class Rasteriser
     VkDeviceMemory uniform_buffer_memory;
     UniformBufferObject* uniform_buffer_map;
 
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorSet descriptor_set;
-
-    VkCommandBuffer command_buffer;
-
-    VkSemaphore render_semaphore;
-    VkFence render_fence;
+    DescriptorSetLayout descriptor_set_layout;
+    DescriptorSet descriptor_set;
 
     const VkFormat depth_format;
 
     const Scene* scene;
     bool in_render;
 
-    void set_scene(Dispatcher& dispatcher, const Scene& scene);
-    void set_camera(Dispatcher& dispatcher, const Camera& camera);
-
-    void wait_for_render();
-    void begin_render(VkFramebuffer framebuffer);
-    VkSemaphore end_render(VkSemaphore* wait_for, uint32_t semaphore_count);
+    void set_scene(CommandPool& command_pool, const Scene& scene);
+    void set_camera(CommandPool& command_pool, const Camera& camera);
 
     void set_extent(uint32_t width, uint32_t height);
 
     void create_render_pass(VkFormat image_format, VkFormat depth_format);
-    void create_descriptor_set_layout();
     void create_pipeline();
-    void create_descriptor_set(Dispatcher& dispatcher);
-    void create_command_buffer(Dispatcher& dispatcher);
-    void create_sync_objects();
-    void write_command_buffer(VkFramebuffer framebuffer);
+    void update_descriptor_set();
+    void write_command_buffer(VkCommandBuffer command_buffer, VkFramebuffer framebuffer);
 
     void free_scene_buffers();
 

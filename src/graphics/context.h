@@ -17,6 +17,8 @@ class VulkanContext
     VulkanContext(ContextUsage usage, const std::vector<const char*>& validation_layers);
     ~VulkanContext();
 
+    inline const VkInstance& handle() const { return instance; }
+
   private:
     const std::vector<const char*> validation_layers;
 

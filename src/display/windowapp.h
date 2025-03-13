@@ -1,7 +1,8 @@
 #ifndef DISPLAY_WINDOWAPP_H_INCLUDED
 #define DISPLAY_WINDOWAPP_H_INCLUDED
 
-#include "graphics/dispatch.h"
+#include "graphics/cmdpool.h"
+#include "graphics/descpool.h"
 #include "scene/scene.h"
 #include "ui.h"
 #include "util.h"
@@ -18,7 +19,8 @@ class WindowedApplication
     VulkanContext context;
     Window window;
     Device device;
-    Dispatcher dispatcher;
+    DescriptorPool descriptor_pool;
+    CommandPool command_pool;
     UiControlPanel control_panel;
 
     NO_COPY(WindowedApplication);

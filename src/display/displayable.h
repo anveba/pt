@@ -20,8 +20,8 @@ class IDisplayable
   public:
     virtual void set_extent(uint32_t width, uint32_t height) = 0;
 
-    virtual void set_scene(Dispatcher& dispatcher, const Scene& scene) = 0;
-    virtual void set_camera(Dispatcher& dispatcher, const Camera& camera) = 0;
+    virtual void set_scene(const Scene& scene) = 0;
+    virtual void set_camera(const Camera& camera) = 0;
 
     virtual void wait_idle() = 0;
     virtual void begin_render() = 0;

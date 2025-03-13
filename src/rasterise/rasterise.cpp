@@ -56,29 +56,37 @@ std::vector<VkDescriptorPoolSize> Rasteriser::get_descriptor_pool_sizes()
     return { { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 } };
 }
 
+static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings()
+{
+    VkDescriptorSetLayoutBinding ubo_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    return { ubo_layout_binding };
+}
+
 Rasteriser::Rasteriser(
-    Dispatcher& dispatcher,
+    Device& device,
+    DescriptorPool& descriptor_pool,
+    CommandPool& command_pool,
     const Scene& scene,
     VkExtent2D extent,
     VkFormat image_format,
     VkFormat depth_format)
-    : device(dispatcher.device)
+    : device(device)
+    , descriptor_set_layout(device, get_descriptor_set_layout_bindings())
+    , descriptor_set(descriptor_pool, descriptor_set_layout)
     , depth_format(depth_format)
     , scene(nullptr)
     , in_render(false)
 {
     set_extent(extent.width, extent.height);
     create_render_pass(image_format, depth_format);
-    create_descriptor_set_layout();
     create_pipeline();
 
     device.create_buffer(uniform_buffer, uniform_buffer_memory, sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     vkMapMemory(device.logical, uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, (void**)&uniform_buffer_map);
 
-    set_scene(dispatcher, scene);
-    create_descriptor_set(dispatcher);
-    create_command_buffer(dispatcher);
-    create_sync_objects();
+    set_scene(command_pool, scene);
+    update_descriptor_set();
 }
 
 Rasteriser::~Rasteriser()
@@ -90,12 +98,8 @@ Rasteriser::~Rasteriser()
     vkUnmapMemory(device.logical, uniform_buffer_memory);
     vkFreeMemory(device.logical, uniform_buffer_memory, nullptr);
 
-    vkDestroySemaphore(device.logical, render_semaphore, nullptr);
-    vkDestroyFence(device.logical, render_fence, nullptr);
-
     vkDestroyPipeline(device.logical, pipeline, nullptr);
     vkDestroyPipelineLayout(device.logical, pipeline_layout, nullptr);
-    vkDestroyDescriptorSetLayout(device.logical, descriptor_set_layout, nullptr);
     vkDestroyRenderPass(device.logical, render_pass, nullptr);
 }
 
@@ -155,24 +159,6 @@ void Rasteriser::create_render_pass(VkFormat image_format, VkFormat depth_format
 
     if (vkCreateRenderPass(device.logical, &render_pass_create_info, nullptr, &render_pass) != VK_SUCCESS)
         throw std::runtime_error("Failed to create render pass.");
-}
-
-void Rasteriser::create_descriptor_set_layout()
-{
-    VkDescriptorSetLayoutBinding ubo_layout_binding{};
-    ubo_layout_binding.binding = 0;
-    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    ubo_layout_binding.descriptorCount = 1;
-    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    ubo_layout_binding.pImmutableSamplers = nullptr;
-
-    VkDescriptorSetLayoutCreateInfo layout_create_info{};
-    layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_create_info.bindingCount = 1;
-    layout_create_info.pBindings = &ubo_layout_binding;
-
-    if (vkCreateDescriptorSetLayout(device.logical, &layout_create_info, nullptr, &descriptor_set_layout) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create descriptor set layout.");
 }
 
 void Rasteriser::create_pipeline()
@@ -255,21 +241,13 @@ void Rasteriser::create_pipeline()
 
     VkPipelineColorBlendAttachmentState colour_blend_attachment{};
     colour_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colour_blend_attachment.blendEnable = VK_FALSE;
-    colour_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    colour_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colour_blend_attachment.blendEnable = VK_TRUE;
+    colour_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    colour_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     colour_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
     colour_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     colour_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     colour_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-    // colour_blend_attachment.blendEnable = VK_TRUE;
-    // colour_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    // colour_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    // colour_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
-    // colour_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    // colour_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    // colour_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
     VkPipelineColorBlendStateCreateInfo colour_blend_create_info{};
     colour_blend_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -285,7 +263,7 @@ void Rasteriser::create_pipeline()
     VkPipelineLayoutCreateInfo pipeline_layout_create_info{};
     pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_create_info.setLayoutCount = 1;
-    pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout;
+    pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout.handle();
     pipeline_layout_create_info.pushConstantRangeCount = 0;
     pipeline_layout_create_info.pPushConstantRanges = nullptr;
 
@@ -330,50 +308,15 @@ void Rasteriser::create_pipeline()
         throw std::runtime_error("Failed to create pipeline.");
 }
 
-void Rasteriser::create_descriptor_set(Dispatcher& dispatch)
+void Rasteriser::update_descriptor_set()
 {
-    VkDescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = dispatch.descriptor_pool;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = &descriptor_set_layout;
+    VkDescriptorBufferInfo buffer_info = DescriptorSet::create_descriptor(uniform_buffer, sizeof(UniformBufferObject));
+    VkWriteDescriptorSet descriptor_write = descriptor_set.write_descriptor_set(buffer_info, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
-    if (vkAllocateDescriptorSets(device.logical, &alloc_info, &descriptor_set) != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate descriptor set.");
-
-    VkDescriptorBufferInfo buffer_info{};
-    buffer_info.buffer = uniform_buffer;
-    buffer_info.offset = 0;
-    buffer_info.range = sizeof(UniformBufferObject);
-
-    VkWriteDescriptorSet descriptor_write{};
-    descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_write.dstSet = descriptor_set;
-    descriptor_write.dstBinding = 0;
-    descriptor_write.dstArrayElement = 0;
-    descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptor_write.descriptorCount = 1;
-    descriptor_write.pBufferInfo = &buffer_info;
-    descriptor_write.pImageInfo = nullptr;
-    descriptor_write.pTexelBufferView = nullptr;
-
-    vkUpdateDescriptorSets(device.logical, 1, &descriptor_write, 0, nullptr);
+    DescriptorSet::update_write_descriptors(device, &descriptor_write, 1);
 }
 
-void Rasteriser::create_command_buffer(Dispatcher& dispatch)
-{
-    VkCommandBufferAllocateInfo cmd_buffer_alloc_info{};
-    cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmd_buffer_alloc_info.commandPool = dispatch.command_pool;
-    cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmd_buffer_alloc_info.commandBufferCount = 1;
-
-    if (vkAllocateCommandBuffers(device.logical, &cmd_buffer_alloc_info, &command_buffer) != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate command buffer.");
-}
-
-// TODO do not write each frame
-void Rasteriser::write_command_buffer(VkFramebuffer framebuffer)
+void Rasteriser::write_command_buffer(VkCommandBuffer command_buffer, VkFramebuffer framebuffer)
 {
     VkRenderPassBeginInfo render_pass_begin_info{};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -413,7 +356,7 @@ void Rasteriser::write_command_buffer(VkFramebuffer framebuffer)
 
     vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set.handle(), 0, nullptr);
 
     assert(vertex_end_indices.size() == index_end_indices.size());
     size_t variant_count = vertex_end_indices.size();
@@ -424,20 +367,6 @@ void Rasteriser::write_command_buffer(VkFramebuffer framebuffer)
         uint32_t vertex_index = ((i == 0) ? 0 : vertex_end_indices[i - 1]);
         vkCmdDrawIndexed(command_buffer, index_count, instance_count, index_index, vertex_index, 0);
     }
-}
-
-void Rasteriser::create_sync_objects()
-{
-    VkSemaphoreCreateInfo semaphore_create_info{};
-    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    if (vkCreateSemaphore(device.logical, &semaphore_create_info, nullptr, &render_semaphore) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create semaphore.");
-
-    VkFenceCreateInfo fence_create_info{};
-    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    if (vkCreateFence(device.logical, &fence_create_info, nullptr, &render_fence) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create fence.");
 }
 
 void Rasteriser::set_extent(uint32_t width, uint32_t height)
@@ -457,7 +386,7 @@ void Rasteriser::free_scene_buffers()
     vkFreeMemory(device.logical, instance_buffer_memory, nullptr);
 }
 
-void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
+void Rasteriser::set_scene(CommandPool& command_pool, const Scene& scene)
 {
     if (this->scene != nullptr)
         free_scene_buffers();
@@ -512,9 +441,9 @@ void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    dispatcher.transfer_to_buffer(vertex_buffer,
-                                  all_vertices.data(),
-                                  all_vertices.size() * sizeof(Vertex));
+    command_pool.transfer_to_buffer(vertex_buffer,
+                                    all_vertices.data(),
+                                    all_vertices.size() * sizeof(Vertex));
 
     device.create_buffer(index_buffer,
                          index_buffer_memory,
@@ -522,9 +451,9 @@ void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    dispatcher.transfer_to_buffer(index_buffer,
-                                  all_indices.data(),
-                                  all_indices.size() * sizeof(IndexedTriangle));
+    command_pool.transfer_to_buffer(index_buffer,
+                                    all_indices.data(),
+                                    all_indices.size() * sizeof(IndexedTriangle));
 
     device.create_buffer(instance_buffer,
                          instance_buffer_memory,
@@ -532,12 +461,12 @@ void Rasteriser::set_scene(Dispatcher& dispatcher, const Scene& scene)
                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    dispatcher.transfer_to_buffer(instance_buffer,
-                                  all_instance_data.data(),
-                                  all_instance_data.size() * sizeof(InstanceData));
+    command_pool.transfer_to_buffer(instance_buffer,
+                                    all_instance_data.data(),
+                                    all_instance_data.size() * sizeof(InstanceData));
 }
 
-void Rasteriser::set_camera(Dispatcher& dispatcher, const Camera& camera)
+void Rasteriser::set_camera(CommandPool& command_pool, const Camera& camera)
 {
     if (scene == nullptr)
         throw std::runtime_error("No scene has been set.");
@@ -552,64 +481,4 @@ void Rasteriser::set_camera(Dispatcher& dispatcher, const Camera& camera)
     uniform_buffer_map->normal = glm::transpose(glm::inverse(model));
     uniform_buffer_map->view_pos = camera.position;
     uniform_buffer_map->inv_light_dir_norm = glm::normalize(-light_dir);
-}
-
-void Rasteriser::wait_for_render()
-{
-    vkWaitForFences(device.logical, 1, &render_fence, VK_TRUE, UINT64_MAX);
-}
-
-void Rasteriser::begin_render(VkFramebuffer framebuffer)
-{
-    if (scene == nullptr)
-        throw std::runtime_error("No scene has been set.");
-    if (in_render)
-        throw std::runtime_error("Rasteriser is already rendering.");
-
-    vkResetCommandBuffer(command_buffer, 0);
-
-    VkCommandBufferBeginInfo cmd_buffer_begin_info{};
-    cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_buffer_begin_info.flags = 0;
-    cmd_buffer_begin_info.pInheritanceInfo = nullptr;
-
-    if (vkBeginCommandBuffer(command_buffer, &cmd_buffer_begin_info) != VK_SUCCESS)
-        throw std::runtime_error("Failed to begin command buffer.");
-
-    write_command_buffer(framebuffer);
-
-    in_render = true;
-}
-
-VkSemaphore Rasteriser::end_render(VkSemaphore* wait_for, uint32_t semaphore_count)
-{
-    if (!in_render)
-        throw std::runtime_error("Render ended before having begun.");
-
-    vkCmdEndRenderPass(command_buffer);
-
-    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS)
-        throw std::runtime_error("Failed to write command buffer.");
-
-    VkSubmitInfo submit_info{};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = wait_for;
-    submit_info.pWaitDstStageMask = wait_stages;
-    submit_info.commandBufferCount = semaphore_count;
-    submit_info.pCommandBuffers = &command_buffer;
-
-    VkSemaphore signal_semaphores[] = { render_semaphore };
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = signal_semaphores;
-
-    vkResetFences(device.logical, 1, &render_fence);
-
-    if (vkQueueSubmit(device.graphics_queue, 1, &submit_info, render_fence) != VK_SUCCESS)
-        throw std::runtime_error("Failed to submit to queue.");
-
-    in_render = false;
-    return render_semaphore;
 }

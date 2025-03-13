@@ -4,24 +4,30 @@
 
 RasteriseDisplayer::RasteriseDisplayer(
     Display& display,
-    Dispatcher& dispatcher,
+    DescriptorPool& descriptor_pool,
+    CommandPool& command_pool,
     const Scene& scene,
     VkExtent2D extent,
     VkFormat image_format,
     VkFormat depth_format)
     : depth_image(VK_NULL_HANDLE)
+    , image_semaphore(display.device, false)
+    , render_semaphore(display.device, false)
+    , render_fence(display.device, true)
     , display(display)
-    , rasteriser(Rasteriser(dispatcher, scene, extent, image_format, depth_format))
+    , command_pool(command_pool)
+    , rasteriser(display.device, descriptor_pool, command_pool, scene, extent, image_format, depth_format)
+    , in_render(false)
 {
-    create_image_semaphore();
     set_extent(display.get_extent().width, display.get_extent().height);
+    command_buffer = command_pool.create_command_buffer();
 }
 
 RasteriseDisplayer::~RasteriseDisplayer()
 {
-    vkDestroySemaphore(display.device.logical, image_semaphore, nullptr);
     destroy_framebuffers();
     destroy_depth_image();
+    command_pool.destroy_command_buffer(command_buffer);
 }
 
 void RasteriseDisplayer::set_extent(uint32_t width, uint32_t height)
@@ -37,31 +43,76 @@ void RasteriseDisplayer::set_extent(uint32_t width, uint32_t height)
     create_framebuffers();
 }
 
-void RasteriseDisplayer::set_scene(Dispatcher& dispatcher, const Scene& scene)
+void RasteriseDisplayer::set_scene(const Scene& scene)
 {
-    rasteriser.set_scene(dispatcher, scene);
+    rasteriser.set_scene(command_pool, scene);
 }
 
-void RasteriseDisplayer::set_camera(Dispatcher& dispatcher, const Camera& camera)
+void RasteriseDisplayer::set_camera(const Camera& camera)
 {
-    rasteriser.set_camera(dispatcher, camera);
+    rasteriser.set_camera(command_pool, camera);
 }
 
 void RasteriseDisplayer::wait_idle()
 {
-    rasteriser.wait_for_render();
+    render_fence.wait();
 }
 
 void RasteriseDisplayer::begin_render()
 {
-    rasteriser.wait_for_render();
+    if (in_render)
+        throw std::runtime_error("Rasteriser is already rendering.");
+
+    render_fence.wait();
+
     VkFramebuffer framebuffer = framebuffers[display.acquire_next_index(image_semaphore)];
-    rasteriser.begin_render(framebuffer);
+
+    vkResetCommandBuffer(command_buffer, 0);
+
+    VkCommandBufferBeginInfo cmd_buffer_begin_info{};
+    cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmd_buffer_begin_info.flags = 0;
+    cmd_buffer_begin_info.pInheritanceInfo = nullptr;
+
+    if (vkBeginCommandBuffer(command_buffer, &cmd_buffer_begin_info) != VK_SUCCESS)
+        throw std::runtime_error("Failed to begin command buffer.");
+
+    rasteriser.write_command_buffer(command_buffer, framebuffer); // TODO do not write once per frame
+
+    in_render = true;
 }
 
 void RasteriseDisplayer::end_render()
 {
-    VkSemaphore render_semaphore = rasteriser.end_render(&image_semaphore, 1);
+    if (!in_render)
+        throw std::runtime_error("Render ended before having begun.");
+
+    vkCmdEndRenderPass(command_buffer);
+
+    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS)
+        throw std::runtime_error("Failed to write command buffer.");
+
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &image_semaphore.handle();
+    submit_info.pWaitDstStageMask = wait_stages;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    VkSemaphore signal_semaphores[] = { render_semaphore.handle() };
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    render_fence.reset();
+
+    if (vkQueueSubmit(display.device.graphics_queue, 1, &submit_info, render_fence.handle()) != VK_SUCCESS)
+        throw std::runtime_error("Failed to submit to queue.");
+
+    in_render = false;
+
     display.present(render_semaphore);
 }
 
@@ -81,7 +132,7 @@ VkRenderPass RasteriseDisplayer::get_render_pass()
 
 VkCommandBuffer RasteriseDisplayer::get_command_buffer()
 {
-    return rasteriser.command_buffer;
+    return command_buffer;
 }
 
 void RasteriseDisplayer::create_framebuffers()
@@ -109,14 +160,6 @@ void RasteriseDisplayer::destroy_framebuffers()
 {
     for (auto framebuffer : framebuffers)
         vkDestroyFramebuffer(display.device.logical, framebuffer, nullptr);
-}
-
-void RasteriseDisplayer::create_image_semaphore()
-{
-    VkSemaphoreCreateInfo semaphore_create_info{};
-    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    if (vkCreateSemaphore(display.device.logical, &semaphore_create_info, nullptr, &image_semaphore) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create semaphore.");
 }
 
 void RasteriseDisplayer::create_depth_image()

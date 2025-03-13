@@ -129,9 +129,9 @@ void Display::create_swap_chain(Device& device,
         swap_chain.image_views[i] = device.create_image_view(swap_chain.images[i], swap_chain.image_format, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-uint32_t Display::acquire_next_index(VkSemaphore image_ready)
+uint32_t Display::acquire_next_index(Semaphore& image_ready)
 {
-    VkResult result = vkAcquireNextImageKHR(device.logical, swap_chain.handle, UINT64_MAX, image_ready, VK_NULL_HANDLE, &current_image_index);
+    VkResult result = vkAcquireNextImageKHR(device.logical, swap_chain.handle, UINT64_MAX, image_ready.handle(), VK_NULL_HANDLE, &current_image_index);
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
         throw std::runtime_error("Failed to acquire swap chain image.");
 
@@ -146,9 +146,9 @@ void Display::recreate_swap_chain()
     create_swap_chain(device, window, surface_format, present_mode);
 }
 
-void Display::present(VkSemaphore wait_for)
+void Display::present(Semaphore& wait_for)
 {
-    VkSemaphore signal_semaphores[] = { wait_for };
+    VkSemaphore signal_semaphores[] = { wait_for.handle() };
 
     VkPresentInfoKHR present_info{};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

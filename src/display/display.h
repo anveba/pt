@@ -2,6 +2,7 @@
 #define DISPLAY_DISPLAY_H_INCLUDED
 
 #include "graphics/device.h"
+#include "graphics/semaphore.h"
 #include "util.h"
 #include "window.h"
 
@@ -33,7 +34,7 @@ class Display
             VkPresentModeKHR present_mode);
     ~Display();
 
-    void present(VkSemaphore wait_for);
+    void present(Semaphore& wait_for);
 
     inline VkExtent2D get_extent() { return swap_chain.extent; }
     void recreate_swap_chain();
@@ -50,7 +51,7 @@ class Display
     Device& device;
     Window& window;
 
-    uint32_t acquire_next_index(VkSemaphore image_ready);
+    uint32_t acquire_next_index(Semaphore& image_ready);
 
     void copy_image(VkImage src, uint32_t dst_index);
 

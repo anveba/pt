@@ -1,5 +1,4 @@
 #include "ui.h"
-#include "graphics/dispatch.h"
 #include "window.h"
 
 #include <imgui.h>
@@ -41,21 +40,20 @@ void UserInterface::destroy()
     ui_initialied = false;
 }
 
-void UserInterface::init_vulkan(Dispatcher& dispatcher, IDisplayable& displayable)
+void UserInterface::init_vulkan(DescriptorPool& descriptor_pool, IDisplayable& displayable)
 {
-
     if (ui_displayer != nullptr)
         throw std::runtime_error("Vulkan usage for the user interface is already initialised.");
 
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.ApiVersion = VK_API_VERSION_1_3;
-    init_info.Instance = dispatcher.device.context.instance;
-    init_info.PhysicalDevice = dispatcher.device.physical;
-    init_info.Device = dispatcher.device.logical;
-    init_info.QueueFamily = dispatcher.device.physical_device_info.present_family_idx.value();
-    init_info.Queue = dispatcher.device.present_queue;
+    init_info.Instance = descriptor_pool.get_device().context.instance;
+    init_info.PhysicalDevice = descriptor_pool.get_device().physical;
+    init_info.Device = descriptor_pool.get_device().logical;
+    init_info.QueueFamily = descriptor_pool.get_device().physical_device_info.present_family_idx.value();
+    init_info.Queue = descriptor_pool.get_device().present_queue;
     init_info.PipelineCache = VK_NULL_HANDLE;
-    init_info.DescriptorPool = dispatcher.descriptor_pool;
+    init_info.DescriptorPool = descriptor_pool.handle();
     init_info.RenderPass = displayable.get_render_pass();
     init_info.Subpass = 0;
     init_info.MinImageCount = 2;

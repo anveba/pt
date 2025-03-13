@@ -15,11 +15,11 @@ Shader::Shader(Device& device, const std::string& path)
     create_info.codeSize = code.size();
     create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
-    if (vkCreateShaderModule(device.logical, &create_info, nullptr, &shader_module) != VK_SUCCESS)
+    if (vkCreateShaderModule(device.logical_handle(), &create_info, nullptr, &shader_module) != VK_SUCCESS)
         throw std::runtime_error("Failed to create shader module. Path: " + path);
 }
 
 Shader::~Shader()
 {
-    vkDestroyShaderModule(device.logical, shader_module, nullptr);
+    vkDestroyShaderModule(device.logical_handle(), shader_module, nullptr);
 }

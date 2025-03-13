@@ -3,13 +3,16 @@
 
 #include "display.h"
 #include "displayable.h"
+#include "graphics/fence.h"
 #include "rasterise/rasterise.h"
+#include "semaphore.h"
 
 class RasteriseDisplayer : public IDisplayable
 {
   public:
     RasteriseDisplayer(Display& display,
-                       Dispatcher& dispatcher,
+                       DescriptorPool& descriptor_pool,
+                       CommandPool& command_pool,
                        const Scene& scene,
                        VkExtent2D extent,
                        VkFormat image_format,
@@ -18,8 +21,8 @@ class RasteriseDisplayer : public IDisplayable
 
     virtual void set_extent(uint32_t width, uint32_t height) override;
 
-    virtual void set_scene(Dispatcher& dispatcher, const Scene& scene) override;
-    virtual void set_camera(Dispatcher& dispatcher, const Camera& camera) override;
+    virtual void set_scene(const Scene& scene) override;
+    virtual void set_camera(const Camera& camera) override;
 
     virtual void wait_idle() override;
     virtual void begin_render() override;
@@ -39,14 +42,19 @@ class RasteriseDisplayer : public IDisplayable
 
     std::vector<VkFramebuffer> framebuffers;
 
-    VkSemaphore image_semaphore;
+    Semaphore image_semaphore;
+    Semaphore render_semaphore;
+    Fence render_fence;
 
     Display& display;
+    CommandPool& command_pool;
     Rasteriser rasteriser;
+    VkCommandBuffer command_buffer;
+
+    bool in_render;
 
     void create_framebuffers();
     void destroy_framebuffers();
-    void create_image_semaphore();
     void create_depth_image();
     void destroy_depth_image();
 

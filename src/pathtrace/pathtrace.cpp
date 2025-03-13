@@ -16,31 +16,55 @@ std::vector<VkDescriptorPoolSize> PathTracer::get_descriptor_pool_sizes()
              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 } };
 }
 
+static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings()
+{
+    // TODO VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR depends on whether it is recursive
+    VkDescriptorSetLayoutBinding acceleration_structure_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+
+    VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+
+    VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+
+    VkDescriptorSetLayoutBinding vertex_binding = DescriptorSetLayout::create_layout_binding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+
+    VkDescriptorSetLayoutBinding index_binding = DescriptorSetLayout::create_layout_binding(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+
+    VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+
+    return {
+        acceleration_structure_layout_binding,
+        result_image_layout_binding,
+        uniform_buffer_binding,
+        vertex_binding,
+        index_binding,
+        object_binding
+    };
+}
+
 PathTracer::PathTracer(
-    Dispatcher& dispatcher,
+    Device& device,
+    DescriptorPool& descriptor_pool,
+    CommandPool& command_pool,
     const Scene& scene,
     VkExtent2D extent)
-    : device(dispatcher.device)
-    , dispatcher(dispatcher)
+    : device(device)
     , extent(extent)
+    , descriptor_set_layout(device, get_descriptor_set_layout_bindings())
+    , descriptor_set(descriptor_pool, descriptor_set_layout)
     , scene(nullptr)
     , in_render(false)
 {
     Splitmix32 sm(1);
     rng = Xshiro128(sm.next(), sm.next(), sm.next(), sm.next());
 
-    create_dest_image(dispatcher);
-    create_descriptor_set_layout();
+    create_dest_image(command_pool);
     create_pipeline();
     create_shader_binding_tables();
 
     device.create_buffer(uniform_buffer, uniform_buffer_memory, sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkMapMemory(device.logical, uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, (void**)&uniform_map);
+    vkMapMemory(device.logical_handle(), uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, (void**)&uniform_map);
 
-    set_scene(dispatcher, scene);
-    create_descriptor_sets(dispatcher);
-    create_command_buffer(dispatcher);
-    create_sync_objects();
+    set_scene(command_pool, scene);
 
     set_samples(1);
     set_max_bounces(1);
@@ -52,24 +76,20 @@ PathTracer::~PathTracer()
 
     free_scene_buffers();
 
-    vkDestroyBuffer(device.logical, uniform_buffer, nullptr);
-    vkUnmapMemory(device.logical, uniform_buffer_memory);
-    vkFreeMemory(device.logical, uniform_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), uniform_buffer, nullptr);
+    vkUnmapMemory(device.logical_handle(), uniform_buffer_memory);
+    vkFreeMemory(device.logical_handle(), uniform_buffer_memory, nullptr);
 
     destroy_dest_image();
 
-    vkDestroySemaphore(device.logical, render_semaphore, nullptr);
-    vkDestroyFence(device.logical, render_fence, nullptr);
+    vkDestroyPipeline(device.logical_handle(), pipeline, nullptr);
+    vkDestroyPipelineLayout(device.logical_handle(), pipeline_layout, nullptr);
 
-    vkDestroyPipeline(device.logical, pipeline, nullptr);
-    vkDestroyPipelineLayout(device.logical, pipeline_layout, nullptr);
-    vkDestroyDescriptorSetLayout(device.logical, descriptor_set_layout, nullptr);
-
-    vkDestroyBuffer(device.logical, shader_group_buffer, nullptr);
-    vkFreeMemory(device.logical, shader_group_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), shader_group_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), shader_group_buffer_memory, nullptr);
 }
 
-void PathTracer::create_dest_image(Dispatcher& dispatcher)
+void PathTracer::create_dest_image(CommandPool& command_pool)
 {
     VkFormat format = VK_FORMAT_B8G8R8A8_UNORM; // TODO: hdr
     device.create_image(dest_image,
@@ -82,7 +102,7 @@ void PathTracer::create_dest_image(Dispatcher& dispatcher)
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     dest_image_view = device.create_image_view(dest_image, format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-    VkCommandBuffer command_buffer = dispatcher.begin_one_time_use_command_buffer();
+    VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
 
     transition_image_layout(command_buffer,
                             dest_image,
@@ -94,14 +114,14 @@ void PathTracer::create_dest_image(Dispatcher& dispatcher)
                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
-    dispatcher.end_one_time_use_command_buffer(command_buffer, device.graphics_queue);
+    command_pool.end_one_time_use_command_buffer(command_buffer, device.graphics_queue);
 }
 
 void PathTracer::destroy_dest_image()
 {
-    vkDestroyImageView(device.logical, dest_image_view, nullptr);
-    vkDestroyImage(device.logical, dest_image, nullptr);
-    vkFreeMemory(device.logical, dest_image_memory, nullptr);
+    vkDestroyImageView(device.logical_handle(), dest_image_view, nullptr);
+    vkDestroyImage(device.logical_handle(), dest_image, nullptr);
+    vkFreeMemory(device.logical_handle(), dest_image_memory, nullptr);
 }
 
 void PathTracer::create_shader_binding_tables()
@@ -122,69 +142,13 @@ void PathTracer::create_shader_binding_tables()
 
     std::vector<uint8_t> shader_handle_data;
     shader_handle_data.resize(table_size);
-    if (vkGetRayTracingShaderGroupHandlesKHR(device.logical, pipeline, 0, group_count, table_size, shader_handle_data.data()) != VK_SUCCESS)
+    if (vkGetRayTracingShaderGroupHandlesKHR(device.logical_handle(), pipeline, 0, group_count, table_size, shader_handle_data.data()) != VK_SUCCESS)
         throw std::runtime_error("Failed to get ray tracing shader group handles.");
 
     uint8_t* buffer_map;
-    vkMapMemory(device.logical, shader_group_buffer_memory, 0, table_size, 0, (void**)&buffer_map);
+    vkMapMemory(device.logical_handle(), shader_group_buffer_memory, 0, table_size, 0, (void**)&buffer_map);
     memcpy(buffer_map, shader_handle_data.data(), table_size);
-    vkUnmapMemory(device.logical, shader_group_buffer_memory);
-}
-
-void PathTracer::create_descriptor_set_layout()
-{
-    VkDescriptorSetLayoutBinding acceleration_structure_layout_binding{};
-    acceleration_structure_layout_binding.binding = 0;
-    acceleration_structure_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    acceleration_structure_layout_binding.descriptorCount = 1;
-    acceleration_structure_layout_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR; // TODO VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR depends on whether it is recursive
-
-    VkDescriptorSetLayoutBinding result_image_layout_binding{};
-    result_image_layout_binding.binding = 1;
-    result_image_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    result_image_layout_binding.descriptorCount = 1;
-    result_image_layout_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-
-    VkDescriptorSetLayoutBinding uniform_buffer_binding{};
-    uniform_buffer_binding.binding = 2;
-    uniform_buffer_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uniform_buffer_binding.descriptorCount = 1;
-    uniform_buffer_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-
-    VkDescriptorSetLayoutBinding vertex_binding{};
-    vertex_binding.binding = 3;
-    vertex_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    vertex_binding.descriptorCount = 1;
-    vertex_binding.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-    VkDescriptorSetLayoutBinding index_binding{};
-    index_binding.binding = 4;
-    index_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    index_binding.descriptorCount = 1;
-    index_binding.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-    VkDescriptorSetLayoutBinding object_binding{};
-    object_binding.binding = 5;
-    object_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    object_binding.descriptorCount = 1;
-    object_binding.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-    std::vector<VkDescriptorSetLayoutBinding> bindings = {
-        acceleration_structure_layout_binding,
-        result_image_layout_binding,
-        uniform_buffer_binding,
-        vertex_binding,
-        index_binding,
-        object_binding
-    };
-
-    VkDescriptorSetLayoutCreateInfo layout_info{};
-    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-    layout_info.pBindings = bindings.data();
-
-    if (vkCreateDescriptorSetLayout(device.logical, &layout_info, nullptr, &descriptor_set_layout) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create descriptor set layout.");
+    vkUnmapMemory(device.logical_handle(), shader_group_buffer_memory);
 }
 
 void PathTracer::create_pipeline()
@@ -192,7 +156,7 @@ void PathTracer::create_pipeline()
     VkPipelineLayoutCreateInfo pipeline_layout_create_info{};
     pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_create_info.setLayoutCount = 1;
-    pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout;
+    pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout.handle();
 
     if (vkCreatePipelineLayout(device.logical, &pipeline_layout_create_info, nullptr, &pipeline_layout) != VK_SUCCESS)
         throw std::runtime_error("Failed to create pipeline layout.");
@@ -257,84 +221,28 @@ void PathTracer::create_pipeline()
     raytracing_pipeline_create_info.pStages = shader_stages.data();
     raytracing_pipeline_create_info.groupCount = static_cast<uint32_t>(shader_groups.size());
     raytracing_pipeline_create_info.pGroups = shader_groups.data();
-    raytracing_pipeline_create_info.maxPipelineRayRecursionDepth = dispatcher.device.physical_device_info.ray_tracing_properties.maxRayRecursionDepth; // TODO
+    raytracing_pipeline_create_info.maxPipelineRayRecursionDepth = device.physical_device_info.ray_tracing_properties.maxRayRecursionDepth; // TODO
     raytracing_pipeline_create_info.layout = pipeline_layout;
 
-    if (vkCreateRayTracingPipelinesKHR(device.logical, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracing_pipeline_create_info, nullptr, &pipeline) != VK_SUCCESS)
+    if (vkCreateRayTracingPipelinesKHR(device.logical_handle(), VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracing_pipeline_create_info, nullptr, &pipeline) != VK_SUCCESS)
         throw std::runtime_error("Failed to create ray tracing pipeline.");
 }
 
-static VkDescriptorBufferInfo create_buffer_descriptor(VkBuffer buffer, VkDeviceSize size, VkDeviceSize offset = 0)
+void PathTracer::update_descriptor_sets()
 {
-    VkDescriptorBufferInfo buffer_descriptor{};
-    buffer_descriptor.buffer = buffer;
-    buffer_descriptor.range = size;
-    buffer_descriptor.offset = offset;
-    return buffer_descriptor;
-}
+    VkDescriptorImageInfo dest_image_descriptor = DescriptorSet::create_descriptor(dest_image_view, VK_IMAGE_LAYOUT_GENERAL);
+    VkDescriptorBufferInfo ubo_descriptor = DescriptorSet::create_descriptor(uniform_buffer, sizeof(UniformBufferObject));
+    VkDescriptorBufferInfo vertex_descriptor = DescriptorSet::create_descriptor(vertex_buffer, vertex_end_indices.back() * sizeof(Vertex));
+    VkDescriptorBufferInfo index_descriptor = DescriptorSet::create_descriptor(index_buffer, index_end_indices.back() * sizeof(uint32_t));
+    VkDescriptorBufferInfo object_descriptor = DescriptorSet::create_descriptor(object_buffer, scene->get_object_variants().size() * sizeof(ObjectData));
 
-static VkWriteDescriptorSet write_buffer_descriptor(
-    VkDescriptorSet descriptor_set,
-    VkDescriptorBufferInfo& buffer_descriptor,
-    VkDescriptorType type,
-    uint32_t binding)
-{
-    VkWriteDescriptorSet buffer_write{};
-    buffer_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    buffer_write.dstSet = descriptor_set;
-    buffer_write.descriptorType = type;
-    buffer_write.dstBinding = binding;
-    buffer_write.pBufferInfo = &buffer_descriptor;
-    buffer_write.descriptorCount = 1;
-    return buffer_write;
-}
-
-void PathTracer::create_descriptor_sets(Dispatcher& dispatch)
-{
-    VkDescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = dispatch.descriptor_pool;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = &descriptor_set_layout;
-
-    if (vkAllocateDescriptorSets(device.logical, &alloc_info, &descriptor_set) != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate descriptor set.");
-
-    VkWriteDescriptorSetAccelerationStructureKHR descriptor_acceleration_structure_info{};
-    descriptor_acceleration_structure_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-    descriptor_acceleration_structure_info.accelerationStructureCount = 1;
-    descriptor_acceleration_structure_info.pAccelerationStructures = &tlas;
-
-    VkWriteDescriptorSet acceleration_structure_write{};
-    acceleration_structure_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    acceleration_structure_write.dstSet = descriptor_set;
-    acceleration_structure_write.dstBinding = 0;
-    acceleration_structure_write.descriptorCount = 1;
-    acceleration_structure_write.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-
-    acceleration_structure_write.pNext = &descriptor_acceleration_structure_info;
-
-    VkDescriptorImageInfo dest_image_descriptor{}; // TODO make helper function for image descriptor info and write
-    dest_image_descriptor.imageView = dest_image_view;
-    dest_image_descriptor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-    VkDescriptorBufferInfo ubo_descriptor = create_buffer_descriptor(uniform_buffer, sizeof(UniformBufferObject));
-    VkDescriptorBufferInfo vertex_descriptor = create_buffer_descriptor(vertex_buffer, vertex_end_indices.back() * sizeof(Vertex));
-    VkDescriptorBufferInfo index_descriptor = create_buffer_descriptor(index_buffer, index_end_indices.back() * sizeof(uint32_t));
-    VkDescriptorBufferInfo object_descriptor = create_buffer_descriptor(object_buffer, scene->get_object_variants().size() * sizeof(ObjectData));
-
-    VkWriteDescriptorSet result_image_write{};
-    result_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    result_image_write.dstSet = descriptor_set;
-    result_image_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    result_image_write.dstBinding = 1;
-    result_image_write.pImageInfo = &dest_image_descriptor;
-    result_image_write.descriptorCount = 1;
-
-    VkWriteDescriptorSet uniform_buffer_write = write_buffer_descriptor(descriptor_set, ubo_descriptor, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2);
-    VkWriteDescriptorSet vertex_buffer_write = write_buffer_descriptor(descriptor_set, vertex_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3);
-    VkWriteDescriptorSet index_buffer_write = write_buffer_descriptor(descriptor_set, index_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4);
-    VkWriteDescriptorSet object_buffer_write = write_buffer_descriptor(descriptor_set, object_descriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5);
+    VkWriteDescriptorSetAccelerationStructureKHR descriptor_set_acceleration_structure_info;
+    VkWriteDescriptorSet acceleration_structure_write = descriptor_set.write_descriptor_set(tlas, descriptor_set_acceleration_structure_info, 0);
+    VkWriteDescriptorSet result_image_write = descriptor_set.write_descriptor_set(dest_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    VkWriteDescriptorSet uniform_buffer_write = descriptor_set.write_descriptor_set(ubo_descriptor, 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    VkWriteDescriptorSet vertex_buffer_write = descriptor_set.write_descriptor_set(vertex_descriptor, 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    VkWriteDescriptorSet index_buffer_write = descriptor_set.write_descriptor_set(index_descriptor, 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    VkWriteDescriptorSet object_buffer_write = descriptor_set.write_descriptor_set(object_descriptor, 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     const std::array<VkWriteDescriptorSet, 6> write_descriptor_sets = {
         acceleration_structure_write,
@@ -344,53 +252,28 @@ void PathTracer::create_descriptor_sets(Dispatcher& dispatch)
         index_buffer_write,
         object_buffer_write
     };
-    vkUpdateDescriptorSets(device.logical, static_cast<uint32_t>(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, VK_NULL_HANDLE);
-}
 
-void PathTracer::create_command_buffer(Dispatcher& dispatch) // TODO move command buffer handling outside of path tracer and rasteriser
-{
-    VkCommandBufferAllocateInfo cmd_buffer_alloc_info{};
-    cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmd_buffer_alloc_info.commandPool = dispatch.command_pool;
-    cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmd_buffer_alloc_info.commandBufferCount = 1;
-
-    if (vkAllocateCommandBuffers(device.logical, &cmd_buffer_alloc_info, &command_buffer) != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate command buffers.");
-}
-
-void PathTracer::create_sync_objects()
-{
-    VkSemaphoreCreateInfo semaphore_create_info{};
-    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    if (vkCreateSemaphore(device.logical, &semaphore_create_info, nullptr, &render_semaphore) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create semaphore.");
-
-    VkFenceCreateInfo fence_create_info{};
-    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    if (vkCreateFence(device.logical, &fence_create_info, nullptr, &render_fence) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create fence.");
+    DescriptorSet::update_write_descriptors(device, write_descriptor_sets.data(), static_cast<uint32_t>(write_descriptor_sets.size()));
 }
 
 void PathTracer::free_scene_buffers()
 {
     assert(scene != nullptr);
 
-    vkDestroyBuffer(device.logical, vertex_buffer, nullptr);
-    vkFreeMemory(device.logical, vertex_buffer_memory, nullptr);
-    vkDestroyBuffer(device.logical, index_buffer, nullptr);
-    vkFreeMemory(device.logical, index_buffer_memory, nullptr);
-    vkDestroyBuffer(device.logical, object_buffer, nullptr);
-    vkFreeMemory(device.logical, object_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), vertex_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), vertex_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), index_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), index_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), object_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), object_buffer_memory, nullptr);
 
-    vkDestroyBuffer(device.logical, tlas_buffer, nullptr);
-    vkFreeMemory(device.logical, tlas_memory, nullptr);
-    vkDestroyBuffer(device.logical, blas_buffer, nullptr);
-    vkFreeMemory(device.logical, blas_memory, nullptr);
-    vkDestroyAccelerationStructureKHR(device.logical, tlas, nullptr);
+    vkDestroyBuffer(device.logical_handle(), tlas_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), tlas_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), blas_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), blas_memory, nullptr);
+    vkDestroyAccelerationStructureKHR(device.logical_handle(), tlas, nullptr);
     for (auto b : blas)
-        vkDestroyAccelerationStructureKHR(device.logical, b, nullptr);
+        vkDestroyAccelerationStructureKHR(device.logical_handle(), b, nullptr);
 }
 
 static VkDeviceAddress get_buffer_address(VkDevice device, VkBuffer buffer)
@@ -402,7 +285,7 @@ static VkDeviceAddress get_buffer_address(VkDevice device, VkBuffer buffer)
     return vkGetBufferDeviceAddress(device, &address_info);
 }
 
-void PathTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
+void PathTracer::set_scene(CommandPool& command_pool, const Scene& scene)
 {
     // TODO unify the buffer creations with the rasteriser.
 
@@ -457,10 +340,10 @@ void PathTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
-    dispatcher.transfer_to_buffer(vertex_buffer,
-                                  all_vertices,
-                                  vertex_count * sizeof(Vertex));
-    vertex_buffer_address = get_buffer_address(device.logical, vertex_buffer);
+    command_pool.transfer_to_buffer(vertex_buffer,
+                                    all_vertices,
+                                    vertex_count * sizeof(Vertex));
+    vertex_buffer_address = get_buffer_address(device.logical_handle(), vertex_buffer);
 
     device.create_buffer(index_buffer,
                          index_buffer_memory,
@@ -469,10 +352,10 @@ void PathTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
-    dispatcher.transfer_to_buffer(index_buffer,
-                                  all_indices,
-                                  tri_count * 3 * sizeof(uint32_t));
-    index_buffer_address = get_buffer_address(device.logical, index_buffer);
+    command_pool.transfer_to_buffer(index_buffer,
+                                    all_indices,
+                                    tri_count * 3 * sizeof(uint32_t));
+    index_buffer_address = get_buffer_address(device.logical_handle(), index_buffer);
 
     device.create_buffer(object_buffer,
                          object_buffer_memory,
@@ -481,19 +364,21 @@ void PathTracer::set_scene(Dispatcher& dispatcher, const Scene& scene)
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
-    dispatcher.transfer_to_buffer(object_buffer,
-                                  all_object_data,
-                                  object_variants.size() * sizeof(ObjectData));
+    command_pool.transfer_to_buffer(object_buffer,
+                                    all_object_data,
+                                    object_variants.size() * sizeof(ObjectData));
 
     delete[] all_vertices;
     delete[] all_indices;
     delete[] all_object_data;
 
-    create_blas(dispatcher);
-    create_tlas(dispatcher);
+    create_blas(command_pool);
+    create_tlas(command_pool);
+
+    update_descriptor_sets();
 }
 
-void PathTracer::set_camera(Dispatcher& dispatcher, const Camera& camera)
+void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
 {
     assert(scene != nullptr);
 
@@ -510,7 +395,6 @@ void PathTracer::set_camera(Dispatcher& dispatcher, const Camera& camera)
 
 void PathTracer::set_samples(uint32_t samples)
 {
-    // TODO check if in render. But begin and end render should be merged, so this will not be a problem.
     if (samples == 0)
         throw std::runtime_error("Samples was zero.");
     uniform_map->samples = samples;
@@ -522,7 +406,7 @@ void PathTracer::set_max_bounces(uint32_t max_bounces)
     uniform_map->max_bounces = max_bounces;
 }
 
-void PathTracer::create_blas(Dispatcher& dispatcher)
+void PathTracer::create_blas(CommandPool& command_pool)
 {
     assert(scene != nullptr);
 
@@ -582,7 +466,7 @@ void PathTracer::create_blas(Dispatcher& dispatcher)
         size = {};
         size.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
         vkGetAccelerationStructureBuildSizesKHR(
-            device.logical,
+            device.logical_handle(),
             VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
             &acceleration_structure_build_geometry_info,
             &max_primitive_count,
@@ -602,7 +486,7 @@ void PathTracer::create_blas(Dispatcher& dispatcher)
     blas.resize(blas_count);
     create_acceleration_structure(
         blas.data(),
-        dispatcher,
+        command_pool,
         blas_buffer,
         size_infos.data(),
         geometries.data(),
@@ -629,7 +513,7 @@ static VkTransformMatrixKHR to_vk_transform_matrix(const Mat4& mat)
     return vkTransformMatrix;
 }
 
-void PathTracer::create_tlas(Dispatcher& dispatcher)
+void PathTracer::create_tlas(CommandPool& command_pool)
 {
     assert(scene != nullptr);
     assert(blas.size() == scene->get_object_variants().size());
@@ -674,9 +558,9 @@ void PathTracer::create_tlas(Dispatcher& dispatcher)
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
-    dispatcher.transfer_to_buffer(instance_buffer,
-                                  instances.data(),
-                                  instances.size() * sizeof(VkAccelerationStructureInstanceKHR));
+    command_pool.transfer_to_buffer(instance_buffer,
+                                    instances.data(),
+                                    instances.size() * sizeof(VkAccelerationStructureInstanceKHR));
     VkDeviceOrHostAddressConstKHR instance_buffer_address = { .deviceAddress = get_buffer_address(device.logical, instance_buffer) };
 
     VkAccelerationStructureGeometryKHR geometry{};
@@ -700,7 +584,7 @@ void PathTracer::create_tlas(Dispatcher& dispatcher)
     VkAccelerationStructureBuildSizesInfoKHR build_sizes_info{};
     build_sizes_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
     vkGetAccelerationStructureBuildSizesKHR(
-        device.logical, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build_geometry_info, &primitive_count, &build_sizes_info);
+        device.logical_handle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build_geometry_info, &primitive_count, &build_sizes_info);
 
     VkAccelerationStructureBuildRangeInfoKHR build_range_info{};
     build_range_info.primitiveCount = primitive_count;
@@ -717,7 +601,7 @@ void PathTracer::create_tlas(Dispatcher& dispatcher)
 
     VkAccelerationStructureBuildRangeInfoKHR* build_range_info_ptr = &build_range_info;
     create_acceleration_structure(&tlas,
-                                  dispatcher,
+                                  command_pool,
                                   tlas_buffer,
                                   &build_sizes_info,
                                   &geometry,
@@ -726,13 +610,13 @@ void PathTracer::create_tlas(Dispatcher& dispatcher)
                                   1,
                                   VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 
-    vkFreeMemory(device.logical, instance_buffer_memory, nullptr);
-    vkDestroyBuffer(device.logical, instance_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), instance_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), instance_buffer, nullptr);
 }
 
 void PathTracer::create_acceleration_structure(
     VkAccelerationStructureKHR* out,
-    Dispatcher& dispatcher,
+    CommandPool& command_pool,
     VkBuffer acc_struct_buffer,
     const VkAccelerationStructureBuildSizesInfoKHR* size_infos,
     const VkAccelerationStructureGeometryKHR* geometries,
@@ -749,7 +633,7 @@ void PathTracer::create_acceleration_structure(
                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
-    VkDeviceAddress scratch_buffer_address = get_buffer_address(device.logical, scratch_buffer);
+    VkDeviceAddress scratch_buffer_address = get_buffer_address(device.logical_handle(), scratch_buffer);
 
     std::vector<VkAccelerationStructureBuildGeometryInfoKHR> build_geometry_infos;
     build_geometry_infos.resize(count);
@@ -779,7 +663,7 @@ void PathTracer::create_acceleration_structure(
         build_geometry.scratchData.deviceAddress = scratch_buffer_address;
     }
 
-    VkCommandBuffer command_buffer = dispatcher.begin_one_time_use_command_buffer();
+    VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
 
     vkCmdBuildAccelerationStructuresKHR(
         command_buffer,
@@ -787,13 +671,13 @@ void PathTracer::create_acceleration_structure(
         build_geometry_infos.data(),
         range_info_ptrs);
 
-    dispatcher.end_one_time_use_command_buffer(command_buffer, device.graphics_queue);
+    command_pool.end_one_time_use_command_buffer(command_buffer, device.graphics_queue);
 
-    vkFreeMemory(device.logical, scratch_buffer_memory, nullptr);
-    vkDestroyBuffer(device.logical, scratch_buffer, nullptr);
+    vkFreeMemory(device.logical_handle(), scratch_buffer_memory, nullptr);
+    vkDestroyBuffer(device.logical_handle(), scratch_buffer, nullptr);
 }
 
-void PathTracer::write_command_buffer()
+void PathTracer::write_command_buffer(VkCommandBuffer command_buffer)
 {
     const uint32_t aligned_handle_size = round_up_to<uint32_t>(
         device.physical_device_info.ray_tracing_properties.shaderGroupHandleSize,
@@ -816,40 +700,8 @@ void PathTracer::write_command_buffer()
     hit_sbt.stride = aligned_handle_size;
     hit_sbt.size = aligned_handle_size;
 
-    // std::vector<VkBufferMemoryBarrier> barriers;
-
-    // auto buffer_barrier = [](VkBuffer buffer, VkDeviceSize size) {
-    //     VkBufferMemoryBarrier barrier{};
-    //     barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    //     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    //     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    //     barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-    //     barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    //     barrier.buffer = buffer;
-    //     barrier.size = size;
-    //     return barrier;
-    // };
-
-    // barriers.emplace_back(buffer_barrier(object_buffer, scene->get_object_variants().size() * sizeof(ObjectData)));
-    // barriers.emplace_back(buffer_barrier(uniform_buffer, sizeof(UniformBufferObject)));
-
-    // vkCmdPipelineBarrier(
-    //     command_buffer,
-    //     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-    //     VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_HOST_BIT,
-    //     0,
-    //     // Memory
-    //     0,
-    //     VK_NULL_HANDLE,
-    //     // Buffers
-    //     static_cast<uint32_t>(barriers.size()),
-    //     barriers.data(),
-    //     // Images
-    //     0,
-    //     VK_NULL_HANDLE);
-
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_layout, 0, 1, &descriptor_set.handle(), 0, nullptr);
 
     VkStridedDeviceAddressRegionKHR callable_sbt{};
 
@@ -864,139 +716,22 @@ void PathTracer::write_command_buffer()
         1);
 }
 
-void PathTracer::wait_for_render()
-{
-    vkWaitForFences(device.logical, 1, &render_fence, VK_TRUE, UINT64_MAX);
-}
-
-void PathTracer::begin_render()
-{
-    if (scene == nullptr)
-        throw std::runtime_error("No scene has been set.");
-    if (in_render)
-        throw std::runtime_error("Ray tracer is already rendering.");
-
-    uniform_map->new_samples_mult = (float)uniform_map->samples / (samples_taken + uniform_map->samples);
-    uniform_map->old_samples_mult = (float)samples_taken / (samples_taken + uniform_map->samples);
-    uniform_map->seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
-
-    vkResetCommandBuffer(command_buffer, 0);
-
-    VkCommandBufferBeginInfo cmd_buffer_begin_info{};
-    cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_buffer_begin_info.flags = 0;
-    cmd_buffer_begin_info.pInheritanceInfo = nullptr;
-
-    if (vkBeginCommandBuffer(command_buffer, &cmd_buffer_begin_info) != VK_SUCCESS)
-        throw std::runtime_error("Failed to begin command buffer.");
-
-    // TODO avoid writing each frame (implement together with frames in flight)
-    write_command_buffer();
-
-    in_render = true;
-}
-
-VkSemaphore PathTracer::end_render(VkSemaphore* wait_for, uint32_t semaphore_count)
-{
-    if (!in_render)
-        throw std::runtime_error("Render ended before having begun.");
-
-    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS)
-        throw std::runtime_error("Failed to write command buffer.");
-
-    VkSubmitInfo submit_info{};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submit_info.waitSemaphoreCount = semaphore_count;
-    submit_info.pWaitSemaphores = wait_for;
-    submit_info.pWaitDstStageMask = wait_stages;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
-
-    VkSemaphore signal_semaphores[] = { render_semaphore };
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = signal_semaphores;
-
-    vkResetFences(device.logical, 1, &render_fence);
-
-    if (vkQueueSubmit(device.graphics_queue, 1, &submit_info, render_fence) != VK_SUCCESS)
-        throw std::runtime_error("Failed to submit to queue.");
-
-    samples_taken += uniform_map->samples;
-    in_render = false;
-    return render_semaphore;
-}
-
-void PathTracer::set_extent(uint32_t width, uint32_t height)
+void PathTracer::set_extent(CommandPool& command_pool, uint32_t width, uint32_t height)
 {
     extent.width = width;
     extent.height = height;
     destroy_dest_image();
-    create_dest_image(dispatcher);
+    create_dest_image(command_pool);
 
-    VkDescriptorImageInfo image_descriptor{};
-    image_descriptor.imageView = dest_image_view;
-    image_descriptor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    VkWriteDescriptorSet write_descriptor_set{};
-    write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write_descriptor_set.dstSet = descriptor_set;
-    write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    write_descriptor_set.dstBinding = 1;
-    write_descriptor_set.pImageInfo = &image_descriptor;
-    write_descriptor_set.descriptorCount = 1;
-    vkUpdateDescriptorSets(device.logical, 1, &write_descriptor_set, 0, VK_NULL_HANDLE);
+    VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(dest_image_view, VK_IMAGE_LAYOUT_GENERAL);
+    VkWriteDescriptorSet write_descriptor_set = descriptor_set.write_descriptor_set(image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    DescriptorSet::update_write_descriptors(device, &write_descriptor_set, 1);
 }
 
-void PathTracer::copy_result(VkImage image)
+void PathTracer::update_uniforms()
 {
-    VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-
-    transition_image_layout(command_buffer,
-                            image,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            0,
-                            VK_ACCESS_TRANSFER_WRITE_BIT,
-                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            subresource_range);
-
-    transition_image_layout(command_buffer,
-                            dest_image,
-                            VK_IMAGE_LAYOUT_GENERAL,
-                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            0,
-                            VK_ACCESS_TRANSFER_READ_BIT,
-                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            subresource_range);
-
-    VkImageCopy copy_region{};
-    copy_region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-    copy_region.srcOffset = { 0, 0, 0 };
-    copy_region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-    copy_region.dstOffset = { 0, 0, 0 };
-    copy_region.extent = { extent.width, extent.height, 1 };
-    vkCmdCopyImage(command_buffer, dest_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
-
-    transition_image_layout(command_buffer,
-                            image,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                            VK_ACCESS_TRANSFER_WRITE_BIT,
-                            0,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                            subresource_range);
-
-    transition_image_layout(command_buffer,
-                            dest_image,
-                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            VK_IMAGE_LAYOUT_GENERAL,
-                            VK_ACCESS_TRANSFER_READ_BIT,
-                            0,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                            subresource_range);
+    uniform_map->new_samples_mult = (float)uniform_map->samples / (samples_taken + uniform_map->samples);
+    uniform_map->old_samples_mult = (float)samples_taken / (samples_taken + uniform_map->samples);
+    uniform_map->seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
+    samples_taken += uniform_map->samples;
 }

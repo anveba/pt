@@ -1,7 +1,8 @@
 #ifndef PATHTRACE_PATHTRACE_H_INCLUDED
 #define PATHTRACE_PATHTRACE_H_INCLUDED
 
-#include "graphics/dispatch.h"
+#include "graphics/cmdpool.h"
+#include "graphics/descset.h"
 #include "graphics/shader.h"
 #include "rng.h"
 #include "scene/scene.h"
@@ -9,7 +10,9 @@
 class PathTracer
 {
   public:
-    PathTracer(Dispatcher& dispatcher,
+    PathTracer(Device& device,
+               DescriptorPool& descriptor_pool,
+               CommandPool& command_pool,
                const Scene& scene,
                VkExtent2D extent);
     ~PathTracer();
@@ -20,21 +23,15 @@ class PathTracer
     uint32_t get_max_bounces() { return uniform_map->max_bounces; }
 
   private:
-    void set_scene(Dispatcher& dispatcher, const Scene& scene);
-    void set_camera(Dispatcher& dispatcher, const Camera& camera);
+    void set_scene(CommandPool& command_pool, const Scene& scene);
+    void set_camera(CommandPool& command_pool, const Camera& camera);
     void set_samples(uint32_t samples);
     void set_max_bounces(uint32_t max_bounces);
+    void set_extent(CommandPool& command_pool, uint32_t width, uint32_t height);
 
-    void wait_for_render();
-    void begin_render();
-    VkSemaphore end_render(VkSemaphore* wait_for, uint32_t semaphore_count);
-
-    void set_extent(uint32_t width, uint32_t height);
-
-    void copy_result(VkImage image);
+    void update_uniforms();
 
     Device& device;
-    Dispatcher& dispatcher;
     VkExtent2D extent;
 
     // TODO: combine buffers
@@ -83,17 +80,12 @@ class PathTracer
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
 
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorSet descriptor_set;
+    DescriptorSetLayout descriptor_set_layout;
+    DescriptorSet descriptor_set;
 
     VkBuffer shader_group_buffer;
     VkDeviceMemory shader_group_buffer_memory;
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shader_groups;
-
-    VkCommandBuffer command_buffer;
-
-    VkSemaphore render_semaphore;
-    VkFence render_fence;
 
     const Scene* scene;
     bool in_render;
@@ -101,20 +93,17 @@ class PathTracer
     uint32_t samples_taken;
     Xshiro128 rng;
 
-    void create_dest_image(Dispatcher& dispatcher);
-    void write_command_buffer();
+    void write_command_buffer(VkCommandBuffer command_buffer);
 
+    void create_dest_image(CommandPool& command_pool);
     void create_shader_binding_tables();
-    void create_descriptor_set_layout();
     void create_pipeline();
-    void create_descriptor_sets(Dispatcher& dispatcher);
-    void create_command_buffer(Dispatcher& dispatcher);
-    void create_sync_objects();
+    void update_descriptor_sets();
 
-    void create_blas(Dispatcher& dispatcher);
-    void create_tlas(Dispatcher& dispatcher);
+    void create_blas(CommandPool& command_pool);
+    void create_tlas(CommandPool& command_pool);
     void create_acceleration_structure(VkAccelerationStructureKHR* out,
-                                       Dispatcher& dispatcher,
+                                       CommandPool& command_pool,
                                        VkBuffer acc_struct_buffer,
                                        const VkAccelerationStructureBuildSizesInfoKHR* size_infos,
                                        const VkAccelerationStructureGeometryKHR* geometries,

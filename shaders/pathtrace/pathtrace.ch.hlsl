@@ -40,11 +40,8 @@ void main(inout RayPayload payload, in Attributes attributes)
     float gamma = attributes.barycentric.y;
 
     float dist = RayTCurrent();
-    float3 hit_point = WorldRayOrigin() + dist * WorldRayDirection();
     float3 obj_space_normal = normalize(alpha * v_a.normal + beta * v_b.normal + gamma * v_c.normal);
     float3 normal = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
-
-    
 
     payload.next_direction = normalize(rand_dir(payload.rng_state));
     if (dot(normal, payload.next_direction) < 0.0) {

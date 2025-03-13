@@ -2,6 +2,7 @@
 #define DISPLAY_UI_H_INCLUDED
 
 #include "displayable.h"
+#include "graphics/descpool.h"
 #include "lalgebra.h"
 #include "util.h"
 
@@ -37,7 +38,7 @@ class UserInterface
 
     static void init(Window& window);
     static void destroy();
-    static void init_vulkan(Dispatcher& dispatcher, IDisplayable& displayable);
+    static void init_vulkan(DescriptorPool& descriptor_pool, IDisplayable& displayable);
     static void destroy_vulkan();
 
     static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes();

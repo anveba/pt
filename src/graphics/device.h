@@ -56,6 +56,9 @@ class Device
 
     inline const PhysicalDeviceInfo& get_physical_device_info() { return physical_device_info; }
 
+    inline const VkDevice& logical_handle() const { return logical; }
+    inline const VkPhysicalDevice& physical_handle() const { return physical; }
+
     inline void wait_idle() { vkDeviceWaitIdle(logical); }
 
   private:
@@ -92,14 +95,18 @@ class Device
 
     void init_logical_device(VulkanContext& context, DeviceUsage usage);
 
+    // TODO remove
     friend class Display;
+    friend class DescriptorPool;
     friend class Shader;
     friend class Rasteriser;
     friend class PathTracer;
     friend class Dispatcher;
+    friend class CommandPool;
     friend class UserInterface;
     friend class RasteriseDisplayer;
     friend class PathTraceDisplayer;
+    friend class DescriptorSetLayout;
 
     NO_COPY(Device);
 };

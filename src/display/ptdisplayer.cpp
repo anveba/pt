@@ -6,54 +6,78 @@
 
 PathTraceDisplayer::PathTraceDisplayer(
     Display& display,
-    Dispatcher& dispatcher,
+    DescriptorPool& descriptor_pool,
+    CommandPool& command_pool,
     const Scene& scene,
     VkExtent2D extent)
-    : display(display)
-    , path_tracer(PathTracer(dispatcher, scene, extent))
+    : image_semaphore(display.device, false)
+    , render_semaphore(display.device, false)
+    , render_fence(display.device, true)
+    , display(display)
+    , command_pool(command_pool)
+    , path_tracer(display.device, descriptor_pool, command_pool, scene, extent)
+    , in_render(false)
 {
     create_render_pass();
-    create_image_semaphore();
     create_framebuffers();
+    command_buffer = command_pool.create_command_buffer();
 }
 
 PathTraceDisplayer::~PathTraceDisplayer()
 {
-    vkDestroySemaphore(display.device.logical, image_semaphore, nullptr);
     destroy_framebuffers();
     vkDestroyRenderPass(display.device.logical, render_pass, nullptr);
+    command_pool.destroy_command_buffer(command_buffer);
 }
 
 void PathTraceDisplayer::set_extent(uint32_t width, uint32_t height)
 {
-    path_tracer.set_extent(width, height);
+    path_tracer.set_extent(command_pool, width, height);
 
     destroy_framebuffers();
     create_framebuffers();
 }
 
-void PathTraceDisplayer::set_scene(Dispatcher& dispatcher, const Scene& scene)
+void PathTraceDisplayer::set_scene(const Scene& scene)
 {
-    path_tracer.set_scene(dispatcher, scene);
+    path_tracer.set_scene(command_pool, scene);
 }
 
-void PathTraceDisplayer::set_camera(Dispatcher& dispatcher, const Camera& camera)
+void PathTraceDisplayer::set_camera(const Camera& camera)
 {
-    path_tracer.set_camera(dispatcher, camera);
+    path_tracer.set_camera(command_pool, camera);
 }
 
 void PathTraceDisplayer::wait_idle()
 {
-    path_tracer.wait_for_render();
+    render_fence.wait();
 }
 
 void PathTraceDisplayer::begin_render()
 {
-    path_tracer.wait_for_render();
+    render_fence.wait();
 
     uint32_t index = display.acquire_next_index(image_semaphore);
-    path_tracer.begin_render();
-    path_tracer.copy_result(display.swap_chain.images[index]);
+
+    if (in_render)
+        throw std::runtime_error("Ray tracer is already rendering.");
+
+    path_tracer.update_uniforms();
+
+    vkResetCommandBuffer(command_buffer, 0);
+
+    VkCommandBufferBeginInfo cmd_buffer_begin_info{};
+    cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmd_buffer_begin_info.flags = 0;
+    cmd_buffer_begin_info.pInheritanceInfo = nullptr;
+
+    if (vkBeginCommandBuffer(command_buffer, &cmd_buffer_begin_info) != VK_SUCCESS)
+        throw std::runtime_error("Failed to begin command buffer.");
+
+    // TODO avoid writing each frame (implement together with frames in flight)
+    path_tracer.write_command_buffer(command_buffer);
+
+    copy_result(display.swap_chain.images[index]);
 
     VkRenderPassBeginInfo render_pass_begin_info{};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -62,13 +86,42 @@ void PathTraceDisplayer::begin_render()
     render_pass_begin_info.renderArea.offset = { 0, 0 };
     render_pass_begin_info.renderArea.extent = path_tracer.extent;
 
-    vkCmdBeginRenderPass(path_tracer.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    in_render = true;
 }
 
 void PathTraceDisplayer::end_render()
 {
-    vkCmdEndRenderPass(path_tracer.command_buffer);
-    VkSemaphore render_semaphore = path_tracer.end_render(&image_semaphore, 1);
+    vkCmdEndRenderPass(command_buffer);
+
+    if (!in_render)
+        throw std::runtime_error("Render ended before having begun.");
+
+    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS)
+        throw std::runtime_error("Failed to write command buffer.");
+
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &image_semaphore.handle();
+    submit_info.pWaitDstStageMask = wait_stages;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    VkSemaphore signal_semaphores[] = { render_semaphore.handle() };
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    render_fence.reset();
+
+    if (vkQueueSubmit(display.device.graphics_queue, 1, &submit_info, render_fence.handle()) != VK_SUCCESS)
+        throw std::runtime_error("Failed to submit to queue.");
+
+    in_render = false;
+
     display.present(render_semaphore);
 }
 
@@ -93,7 +146,7 @@ VkRenderPass PathTraceDisplayer::get_render_pass()
 
 VkCommandBuffer PathTraceDisplayer::get_command_buffer()
 {
-    return path_tracer.command_buffer;
+    return command_buffer;
 }
 
 void PathTraceDisplayer::create_render_pass()
@@ -178,10 +231,55 @@ void PathTraceDisplayer::destroy_framebuffers()
         vkDestroyFramebuffer(display.device.logical, framebuffer, nullptr);
 }
 
-void PathTraceDisplayer::create_image_semaphore()
+void PathTraceDisplayer::copy_result(VkImage image)
 {
-    VkSemaphoreCreateInfo semaphore_create_info{};
-    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    if (vkCreateSemaphore(display.device.logical, &semaphore_create_info, nullptr, &image_semaphore) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create semaphore.");
+    VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+    transition_image_layout(command_buffer,
+                            image,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            0,
+                            VK_ACCESS_TRANSFER_WRITE_BIT,
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            subresource_range);
+
+    transition_image_layout(command_buffer,
+                            path_tracer.dest_image,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            0,
+                            VK_ACCESS_TRANSFER_READ_BIT,
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            subresource_range);
+
+    VkImageCopy copy_region{};
+    copy_region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    copy_region.srcOffset = { 0, 0, 0 };
+    copy_region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    copy_region.dstOffset = { 0, 0, 0 };
+    copy_region.extent = { path_tracer.extent.width, path_tracer.extent.height, 1 };
+    vkCmdCopyImage(command_buffer, path_tracer.dest_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+    transition_image_layout(command_buffer,
+                            image,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_ACCESS_TRANSFER_WRITE_BIT,
+                            0,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                            subresource_range);
+
+    transition_image_layout(command_buffer,
+                            path_tracer.dest_image,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_ACCESS_TRANSFER_READ_BIT,
+                            0,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                            subresource_range);
 }
