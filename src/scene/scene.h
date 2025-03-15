@@ -24,15 +24,12 @@ class Scene
 {
   public:
     Scene()
-        : transform(Mat4(1.0f))
     {
     }
 
     std::vector<ObjectVariant>& get_object_variants() { return object_variants; }
     const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
     const std::vector<PointLight>& get_point_lights() const { return point_lights; }
-    Transform& global_transform() { return transform; }
-    const Transform& global_transform() const { return transform; }
 
     void from_file(const std::string& path, Camera& camera);
 
@@ -40,8 +37,6 @@ class Scene
     std::vector<ObjectVariant> object_variants;
 
     std::vector<PointLight> point_lights;
-
-    Transform transform;
 
     NO_COPY(Scene);
 };

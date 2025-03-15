@@ -47,11 +47,11 @@ void UserInterface::init_vulkan(DescriptorPool& descriptor_pool, IDisplayable& d
 
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.ApiVersion = VK_API_VERSION_1_3;
-    init_info.Instance = descriptor_pool.get_device().context.instance;
-    init_info.PhysicalDevice = descriptor_pool.get_device().physical;
-    init_info.Device = descriptor_pool.get_device().logical;
-    init_info.QueueFamily = descriptor_pool.get_device().physical_device_info.present_family_idx.value();
-    init_info.Queue = descriptor_pool.get_device().present_queue;
+    init_info.Instance = descriptor_pool.get_device().get_context().handle();
+    init_info.PhysicalDevice = descriptor_pool.get_device().physical_handle();
+    init_info.Device = descriptor_pool.get_device().logical_handle();
+    init_info.QueueFamily = descriptor_pool.get_device().get_physical_device_info().present_family_idx.value();
+    init_info.Queue = descriptor_pool.get_device().get_present_queue();
     init_info.PipelineCache = VK_NULL_HANDLE;
     init_info.DescriptorPool = descriptor_pool.handle();
     init_info.RenderPass = displayable.get_render_pass();

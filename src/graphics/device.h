@@ -56,23 +56,18 @@ class Device
 
     inline const PhysicalDeviceInfo& get_physical_device_info() { return physical_device_info; }
 
+    VkDeviceAddress get_buffer_address(VkBuffer buffer);
+
     inline const VkDevice& logical_handle() const { return logical; }
     inline const VkPhysicalDevice& physical_handle() const { return physical; }
 
+    inline const VkQueue& get_graphics_queue() const { return graphics_queue; }
+    inline const VkQueue& get_present_queue() const { return present_queue; }
+    inline const VkQueue& get_compute_queue() const { return compute_queue; }
+
+    inline VulkanContext& get_context() const { return context; }
+
     inline void wait_idle() { vkDeviceWaitIdle(logical); }
-
-  private:
-    VkPhysicalDevice physical;
-    PhysicalDeviceInfo physical_device_info;
-
-    VkDevice logical;
-
-    VkQueue graphics_queue;
-    VkQueue present_queue;
-    VkQueue compute_queue;
-
-    VulkanContext& context;
-    const DeviceUsage usage;
 
     void create_image(VkImage& image,
                       VkDeviceMemory& memory,
@@ -90,23 +85,23 @@ class Device
                        VkMemoryPropertyFlags mem_flags,
                        VkMemoryAllocateFlags alloc_flags = 0);
 
+  private:
+    VkPhysicalDevice physical;
+    PhysicalDeviceInfo physical_device_info;
+
+    VkDevice logical;
+
+    VkQueue graphics_queue;
+    VkQueue present_queue;
+    VkQueue compute_queue;
+
+    VulkanContext& context;
+    const DeviceUsage usage;
+
     void init_physical_device(VkPhysicalDevice handle, VkSurfaceKHR surface);
     void find_physical_device(const std::vector<VkPhysicalDevice>& devices, DeviceUsage usage, VkSurfaceKHR surface);
 
     void init_logical_device(VulkanContext& context, DeviceUsage usage);
-
-    // TODO remove
-    friend class Display;
-    friend class DescriptorPool;
-    friend class Shader;
-    friend class Rasteriser;
-    friend class PathTracer;
-    friend class Dispatcher;
-    friend class CommandPool;
-    friend class UserInterface;
-    friend class RasteriseDisplayer;
-    friend class PathTraceDisplayer;
-    friend class DescriptorSetLayout;
 
     NO_COPY(Device);
 };

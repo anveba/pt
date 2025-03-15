@@ -26,6 +26,8 @@ class Window
 
     void process_events(WindowEventInfo& info, IInputHandler* input_handler);
 
+    inline const VkSurfaceKHR surface_handle() const { return surface; }
+
   private:
     SDL_Window* handle;
     uint32_t width, height;
@@ -36,8 +38,6 @@ class Window
 
     void query_dimensions();
 
-    friend class Device;
-    friend class Display;
     friend class UserInterface;
 
     NO_COPY(Window);

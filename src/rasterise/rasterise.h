@@ -5,6 +5,7 @@
 #include "graphics/descset.h"
 #include "graphics/shader.h"
 #include "scene/scene.h"
+#include "scene/scenebuffer.h"
 
 class Rasteriser
 {
@@ -24,23 +25,12 @@ class Rasteriser
     Device& device;
     VkExtent2D extent;
 
+    SceneBuffer<RasteriseInstanceData> scene_buffer;
+
     VkRenderPass render_pass;
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
-
-    // TODO: combine buffers
-    VkBuffer vertex_buffer;
-    VkDeviceMemory vertex_buffer_memory;
-    std::vector<uint32_t> vertex_end_indices;
-
-    VkBuffer index_buffer;
-    VkDeviceMemory index_buffer_memory;
-    std::vector<uint32_t> index_end_indices;
-
-    VkBuffer instance_buffer;
-    VkDeviceMemory instance_buffer_memory;
-    std::vector<uint32_t> instance_end_indices;
 
     struct UniformBufferObject
     {
@@ -58,7 +48,6 @@ class Rasteriser
 
     const VkFormat depth_format;
 
-    const Scene* scene;
     bool in_render;
 
     void set_scene(CommandPool& command_pool, const Scene& scene);
@@ -70,8 +59,6 @@ class Rasteriser
     void create_pipeline();
     void update_descriptor_set();
     void write_command_buffer(VkCommandBuffer command_buffer, VkFramebuffer framebuffer);
-
-    void free_scene_buffers();
 
     friend class RasteriseDisplayer;
 

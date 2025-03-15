@@ -37,16 +37,16 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
         throw std::runtime_error("Window usage bit is not compatible with window parameter given.");
 
     uint32_t device_count;
-    if (vkEnumeratePhysicalDevices(context.instance, &device_count, nullptr) != VK_SUCCESS)
+    if (vkEnumeratePhysicalDevices(context.handle(), &device_count, nullptr) != VK_SUCCESS)
         throw std::runtime_error("Failed to enumerate physical devices.");
     if (device_count == 0)
         throw std::runtime_error("Could not find devices with Vulkan support.");
 
     std::vector<VkPhysicalDevice> devices(device_count);
-    if (vkEnumeratePhysicalDevices(context.instance, &device_count, devices.data()) != VK_SUCCESS)
+    if (vkEnumeratePhysicalDevices(context.handle(), &device_count, devices.data()) != VK_SUCCESS)
         throw std::runtime_error("Failed to enumerate physical devices.");
 
-    find_physical_device(devices, usage, window ? window->surface : VK_NULL_HANDLE);
+    find_physical_device(devices, usage, window ? window->surface_handle() : VK_NULL_HANDLE);
 
     if (physical == VK_NULL_HANDLE)
         throw std::runtime_error("No suitable physical device found.");
@@ -59,7 +59,7 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
         vkGetDeviceQueue(logical, physical_device_info.present_family_idx.value(), 0, &present_queue);
 
     if (usage & DEVICE_USAGE_RAY_TRACE_BIT)
-        load_ray_trace_functions(context.instance, logical);
+        load_ray_trace_functions(context.handle(), logical);
 }
 
 Device::~Device()
@@ -70,7 +70,7 @@ Device::~Device()
 
 void Device::query_swap_chain_support(SwapChainSupport& support, const Window& window)
 {
-    get_swap_chain_support(support, physical, window.surface);
+    get_swap_chain_support(support, physical, window.surface_handle());
 }
 
 static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevice device, VkSurfaceKHR surface)
@@ -283,8 +283,8 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
     create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
     create_info.enabledExtensionCount = static_cast<uint32_t>(required_extensions.size());
     create_info.ppEnabledExtensionNames = required_extensions.data();
-    create_info.enabledLayerCount = static_cast<uint32_t>(context.validation_layers.size());
-    create_info.ppEnabledLayerNames = context.validation_layers.data();
+    create_info.enabledLayerCount = static_cast<uint32_t>(context.get_validation_layers().size());
+    create_info.ppEnabledLayerNames = context.get_validation_layers().data();
 
     VkPhysicalDeviceFeatures2 features2 = {};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -363,6 +363,15 @@ VkFormat Device::find_image_format(
     }
 
     throw std::runtime_error("Failed to find format.");
+}
+
+VkDeviceAddress Device::get_buffer_address(VkBuffer buffer)
+{
+    VkBufferDeviceAddressInfo address_info = {};
+    address_info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    address_info.buffer = buffer;
+
+    return vkGetBufferDeviceAddress(logical, &address_info);
 }
 
 uint32_t Device::find_suitable_memory_type(

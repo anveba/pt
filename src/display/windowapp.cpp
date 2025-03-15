@@ -1,8 +1,8 @@
 #include "windowapp.h"
 
 #include "fps.h"
-#include "ptdisplayer.h"
-#include "rasterisedisplayer.h"
+#include "pathtrace/ptdisplayer.h"
+#include "rasterise/rasterisedisplayer.h"
 
 static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
 {

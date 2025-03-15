@@ -14,7 +14,7 @@ Window::Window(VulkanContext& context, uint32_t width, uint32_t height)
     assert(width > 0 && width <= std::numeric_limits<int>::max());
     assert(height > 0 && height <= std::numeric_limits<int>::max());
 
-    if (!(context.usage & CONTEXT_USAGE_WINDOW_BIT))
+    if (!(context.get_usage() & CONTEXT_USAGE_WINDOW_BIT))
         throw std::runtime_error("Windowing is not enabled in Vulkan context.");
 
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
@@ -27,7 +27,7 @@ Window::Window(VulkanContext& context, uint32_t width, uint32_t height)
     if (handle == NULL)
         throw std::runtime_error("Failed to open window" + std::string(SDL_GetError()));
 
-    if (!SDL_Vulkan_CreateSurface(handle, context.instance, nullptr, &surface))
+    if (!SDL_Vulkan_CreateSurface(handle, context.handle(), nullptr, &surface))
         throw std::runtime_error("Failed to create surface: " + std::string(SDL_GetError()));
 
     query_dimensions();
@@ -35,7 +35,7 @@ Window::Window(VulkanContext& context, uint32_t width, uint32_t height)
 
 Window::~Window()
 {
-    vkDestroySurfaceKHR(context.instance, surface, nullptr);
+    vkDestroySurfaceKHR(context.handle(), surface, nullptr);
     SDL_DestroyWindow(handle);
 }
 

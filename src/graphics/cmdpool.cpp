@@ -6,7 +6,7 @@ CommandPool::CommandPool(Device& device)
     VkCommandPoolCreateInfo cmd_pool_create_info{};
     cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    cmd_pool_create_info.queueFamilyIndex = device.physical_device_info.graphics_family_idx.value();
+    cmd_pool_create_info.queueFamilyIndex = device.get_physical_device_info().graphics_family_idx.value();
 
     if (vkCreateCommandPool(device.logical_handle(), &cmd_pool_create_info, nullptr, &command_pool) != VK_SUCCESS)
         throw std::runtime_error("Failed to create command pool.");
@@ -103,5 +103,5 @@ void CommandPool::copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
     copy.size = size;
     vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy);
 
-    end_one_time_use_command_buffer(command_buffer, device.graphics_queue);
+    end_one_time_use_command_buffer(command_buffer, device.get_graphics_queue());
 }

@@ -14,7 +14,7 @@ struct UniformBufferObject
     uint max_bounces;
 };
 
-struct ObjectData {
+struct InstanceData {
     uint vertex_index;
     uint index_index;
     uint material_index;

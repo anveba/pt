@@ -1,8 +1,7 @@
 #include "ptdisplayer.h"
 
-#include "display.h"
+#include "display/ui.h"
 #include "pathtrace/pathtrace.h"
-#include "ui.h"
 
 PathTraceDisplayer::PathTraceDisplayer(
     Display& display,
@@ -10,12 +9,12 @@ PathTraceDisplayer::PathTraceDisplayer(
     CommandPool& command_pool,
     const Scene& scene,
     VkExtent2D extent)
-    : image_semaphore(display.device, false)
-    , render_semaphore(display.device, false)
-    , render_fence(display.device, true)
+    : image_semaphore(display.get_device(), false)
+    , render_semaphore(display.get_device(), false)
+    , render_fence(display.get_device(), true)
     , display(display)
     , command_pool(command_pool)
-    , path_tracer(display.device, descriptor_pool, command_pool, scene, extent)
+    , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, extent)
     , in_render(false)
 {
     create_render_pass();
@@ -26,7 +25,7 @@ PathTraceDisplayer::PathTraceDisplayer(
 PathTraceDisplayer::~PathTraceDisplayer()
 {
     destroy_framebuffers();
-    vkDestroyRenderPass(display.device.logical, render_pass, nullptr);
+    vkDestroyRenderPass(display.get_device().logical_handle(), render_pass, nullptr);
     command_pool.destroy_command_buffer(command_buffer);
 }
 
@@ -77,7 +76,7 @@ void PathTraceDisplayer::begin_render()
     // TODO avoid writing each frame (implement together with frames in flight)
     path_tracer.write_command_buffer(command_buffer);
 
-    copy_result(display.swap_chain.images[index]);
+    copy_result(display.get_swap_chain().images[index]);
 
     VkRenderPassBeginInfo render_pass_begin_info{};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -117,7 +116,7 @@ void PathTraceDisplayer::end_render()
 
     render_fence.reset();
 
-    if (vkQueueSubmit(display.device.graphics_queue, 1, &submit_info, render_fence.handle()) != VK_SUCCESS)
+    if (vkQueueSubmit(display.get_device().get_graphics_queue(), 1, &submit_info, render_fence.handle()) != VK_SUCCESS)
         throw std::runtime_error("Failed to submit to queue.");
 
     in_render = false;
@@ -152,7 +151,7 @@ VkCommandBuffer PathTraceDisplayer::get_command_buffer()
 void PathTraceDisplayer::create_render_pass()
 {
     VkAttachmentDescription colour_attachment{};
-    colour_attachment.format = display.surface_format.format;
+    colour_attachment.format = display.get_surface_format().format;
     colour_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colour_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colour_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -202,25 +201,25 @@ void PathTraceDisplayer::create_render_pass()
     render_pass_create_info.dependencyCount = static_cast<uint32_t>(dependencies.size());
     render_pass_create_info.pDependencies = dependencies.data();
 
-    if (vkCreateRenderPass(display.device.logical, &render_pass_create_info, nullptr, &render_pass) != VK_SUCCESS)
+    if (vkCreateRenderPass(display.get_device().logical_handle(), &render_pass_create_info, nullptr, &render_pass) != VK_SUCCESS)
         throw std::runtime_error("Failed to create render pass.");
 }
 
 void PathTraceDisplayer::create_framebuffers()
 {
-    framebuffers.resize(display.swap_chain.images.size());
-    for (size_t i = 0; i < display.swap_chain.images.size(); i++) {
+    framebuffers.resize(display.get_swap_chain().images.size());
+    for (size_t i = 0; i < display.get_swap_chain().images.size(); i++) {
 
         VkFramebufferCreateInfo framebuffer_create_info{};
         framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebuffer_create_info.renderPass = render_pass;
         framebuffer_create_info.attachmentCount = 1;
-        framebuffer_create_info.pAttachments = &display.swap_chain.image_views[i];
-        framebuffer_create_info.width = display.swap_chain.extent.width;
-        framebuffer_create_info.height = display.swap_chain.extent.height;
+        framebuffer_create_info.pAttachments = &display.get_swap_chain().image_views[i];
+        framebuffer_create_info.width = display.get_swap_chain().extent.width;
+        framebuffer_create_info.height = display.get_swap_chain().extent.height;
         framebuffer_create_info.layers = 1;
 
-        if (vkCreateFramebuffer(display.device.logical, &framebuffer_create_info, nullptr, &framebuffers[i]) != VK_SUCCESS)
+        if (vkCreateFramebuffer(display.get_device().logical_handle(), &framebuffer_create_info, nullptr, &framebuffers[i]) != VK_SUCCESS)
             throw std::runtime_error("Failed to create framebuffer.");
     }
 }
@@ -228,7 +227,7 @@ void PathTraceDisplayer::create_framebuffers()
 void PathTraceDisplayer::destroy_framebuffers()
 {
     for (auto framebuffer : framebuffers)
-        vkDestroyFramebuffer(display.device.logical, framebuffer, nullptr);
+        vkDestroyFramebuffer(display.get_device().logical_handle(), framebuffer, nullptr);
 }
 
 void PathTraceDisplayer::copy_result(VkImage image)

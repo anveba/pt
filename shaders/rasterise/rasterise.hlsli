@@ -3,10 +3,9 @@
 
 struct UniformBufferObject
 {
-    float4x4 mvp;
+    float4x4 view_proj;
     float3 view_pos;
     float3 inv_light_dir_norm;
-    float3x3 normal;
 };
 
 cbuffer ubo : register(b0, space0) { UniformBufferObject ubo; }

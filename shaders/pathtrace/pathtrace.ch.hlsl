@@ -4,10 +4,10 @@ RaytracingAccelerationStructure bvh : register(t0);
 RWTexture2D<float4> dest_image : register(u1);
 StructuredBuffer<float4> vertex_buffer : register(t3);
 StructuredBuffer<uint> index_buffer : register(t4);
-StructuredBuffer<ObjectData> object_buffer : register(t5);
+StructuredBuffer<InstanceData> instance_buffer : register(t5);
 
-ObjectData get_object_data(uint i) {
-    return object_buffer[i];
+InstanceData get_instance_data(uint i) {
+    return instance_buffer[i];
 }
 
 uint3 get_index(uint i) {
@@ -28,12 +28,12 @@ Vertex get_vertex(uint i) {
 [shader("closesthit")]
 void main(inout RayPayload payload, in Attributes attributes)
 {
-    ObjectData object_data = get_object_data(InstanceID());
-    uint3 indices = get_index(object_data.index_index + PrimitiveIndex() * 3);
+    InstanceData instance_data = get_instance_data(InstanceID());
+    uint3 indices = get_index(instance_data.index_index + PrimitiveIndex() * 3);
 
-    Vertex v_a = get_vertex(object_data.vertex_index + indices.x);
-    Vertex v_b = get_vertex(object_data.vertex_index + indices.y);
-    Vertex v_c = get_vertex(object_data.vertex_index + indices.z);
+    Vertex v_a = get_vertex(instance_data.vertex_index + indices.x);
+    Vertex v_b = get_vertex(instance_data.vertex_index + indices.y);
+    Vertex v_c = get_vertex(instance_data.vertex_index + indices.z);
 
     float alpha = 1.0f - attributes.barycentric.x - attributes.barycentric.y;
     float beta = attributes.barycentric.x;

@@ -13,12 +13,11 @@ class Shader
     Shader(Device& device, const std::string& path);
     ~Shader();
 
+    const VkShaderModule& handle() const { return shader_module; }
+
   private:
     VkShaderModule shader_module;
     Device& device;
-
-    friend class Rasteriser;
-    friend class PathTracer;
 
     NO_COPY(Shader);
 };

@@ -19,6 +19,9 @@ class VulkanContext
 
     inline const VkInstance& handle() const { return instance; }
 
+    inline const std::vector<const char*>& get_validation_layers() const { return validation_layers; }
+    inline const ContextUsage& get_usage() const { return usage; }
+
   private:
     const std::vector<const char*> validation_layers;
 
@@ -26,10 +29,6 @@ class VulkanContext
     const ContextUsage usage;
 
     void init_instance(ContextUsage usage);
-
-    friend class Device;
-    friend class UserInterface;
-    friend class Window;
 
     NO_COPY(VulkanContext);
 };

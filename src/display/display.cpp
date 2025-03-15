@@ -24,8 +24,8 @@ Display::~Display()
 void Display::destroy_swap_chain()
 {
     for (auto view : swap_chain.image_views)
-        vkDestroyImageView(device.logical, view, nullptr);
-    vkDestroySwapchainKHR(device.logical, swap_chain.handle, nullptr);
+        vkDestroyImageView(device.logical_handle(), view, nullptr);
+    vkDestroySwapchainKHR(device.logical_handle(), swap_chain.handle, nullptr);
 }
 
 VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceFormatKHR>& formats)
@@ -92,7 +92,7 @@ void Display::create_swap_chain(Device& device,
 
     VkSwapchainCreateInfoKHR create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    create_info.surface = window.surface;
+    create_info.surface = window.surface_handle();
     create_info.minImageCount = image_count;
     create_info.imageFormat = surface_format.format;
     create_info.imageColorSpace = surface_format.colorSpace;
@@ -100,9 +100,9 @@ void Display::create_swap_chain(Device& device,
     create_info.imageArrayLayers = 1;
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT; // TODO TRANSFER_DST_BIT is used for ray tracing and should be only used when indicated
 
-    uint32_t queue_family_indices[] = { device.physical_device_info.graphics_family_idx.value(),
-                                        device.physical_device_info.present_family_idx.value() };
-    if (device.physical_device_info.graphics_family_idx != device.physical_device_info.present_family_idx) {
+    uint32_t queue_family_indices[] = { device.get_physical_device_info().graphics_family_idx.value(),
+                                        device.get_physical_device_info().present_family_idx.value() };
+    if (device.get_physical_device_info().graphics_family_idx != device.get_physical_device_info().present_family_idx) {
         create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = queue_family_indices;
@@ -117,12 +117,12 @@ void Display::create_swap_chain(Device& device,
     create_info.clipped = VK_TRUE; // TODO
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
-    if (vkCreateSwapchainKHR(device.logical, &create_info, nullptr, &swap_chain.handle) != VK_SUCCESS)
+    if (vkCreateSwapchainKHR(device.logical_handle(), &create_info, nullptr, &swap_chain.handle) != VK_SUCCESS)
         throw std::runtime_error("Failed to create swap chain.");
 
-    vkGetSwapchainImagesKHR(device.logical, swap_chain.handle, &image_count, nullptr);
+    vkGetSwapchainImagesKHR(device.logical_handle(), swap_chain.handle, &image_count, nullptr);
     swap_chain.images.resize(image_count);
-    vkGetSwapchainImagesKHR(device.logical, swap_chain.handle, &image_count, swap_chain.images.data());
+    vkGetSwapchainImagesKHR(device.logical_handle(), swap_chain.handle, &image_count, swap_chain.images.data());
 
     swap_chain.image_views.resize(swap_chain.images.size());
     for (size_t i = 0; i < swap_chain.images.size(); i++)
@@ -131,7 +131,7 @@ void Display::create_swap_chain(Device& device,
 
 uint32_t Display::acquire_next_index(Semaphore& image_ready)
 {
-    VkResult result = vkAcquireNextImageKHR(device.logical, swap_chain.handle, UINT64_MAX, image_ready.handle(), VK_NULL_HANDLE, &current_image_index);
+    VkResult result = vkAcquireNextImageKHR(device.logical_handle(), swap_chain.handle, UINT64_MAX, image_ready.handle(), VK_NULL_HANDLE, &current_image_index);
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
         throw std::runtime_error("Failed to acquire swap chain image.");
 
@@ -140,7 +140,7 @@ uint32_t Display::acquire_next_index(Semaphore& image_ready)
 
 void Display::recreate_swap_chain()
 {
-    vkDeviceWaitIdle(device.logical);
+    vkDeviceWaitIdle(device.logical_handle());
     destroy_swap_chain();
 
     create_swap_chain(device, window, surface_format, present_mode);
@@ -162,5 +162,5 @@ void Display::present(Semaphore& wait_for)
 
     present_info.pResults = nullptr;
 
-    vkQueuePresentKHR(device.present_queue, &present_info);
+    vkQueuePresentKHR(device.get_present_queue(), &present_info);
 }

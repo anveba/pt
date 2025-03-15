@@ -1,8 +1,8 @@
-#ifndef DISPLAY_PTDISPLAYER_H_INCLUDED
-#define DISPLAY_PTDISPLAYER_H_INCLUDED
+#ifndef PATHTRACE_PTDISPLAYER_H_INCLUDED
+#define PATHTRACE_PTDISPLAYER_H_INCLUDED
 
-#include "display.h"
-#include "displayable.h"
+#include "display/display.h"
+#include "display/displayable.h"
 #include "graphics/cmdpool.h"
 #include "graphics/descpool.h"
 #include "graphics/fence.h"

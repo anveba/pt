@@ -1,8 +1,8 @@
-#ifndef DISPLAY_RASTERISEDISPLAYER_H_INCLUDED
-#define DISPLAY_RASTERISEDISPLAYER_H_INCLUDED
+#ifndef RASTERISE_RASTERISEDISPLAYER_H_INCLUDED
+#define RASTERISE_RASTERISEDISPLAYER_H_INCLUDED
 
-#include "display.h"
-#include "displayable.h"
+#include "display/display.h"
+#include "display/displayable.h"
 #include "graphics/fence.h"
 #include "rasterise/rasterise.h"
 #include "semaphore.h"
