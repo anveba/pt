@@ -57,6 +57,8 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
         vkGetDeviceQueue(logical, physical_device_info.graphics_family_idx.value(), 0, &graphics_queue);
     if (physical_device_info.present_family_idx.has_value())
         vkGetDeviceQueue(logical, physical_device_info.present_family_idx.value(), 0, &present_queue);
+    if (physical_device_info.graphics_family_idx.has_value()) // TODO split graphics and compute queue
+        vkGetDeviceQueue(logical, physical_device_info.graphics_family_idx.value(), 0, &compute_queue);
 
     if (usage & DEVICE_USAGE_RAY_TRACE_BIT)
         load_ray_trace_functions(context.handle(), logical);
@@ -126,8 +128,9 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
     for (uint32_t i = 0; i < queue_families.size(); i++) {
-        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            info.graphics_family_idx = i;
+        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            info.graphics_family_idx = i; // TODO split compute and graphics queue
+        }
 
         if (surface != VK_NULL_HANDLE) {
             VkBool32 present_support = false;

@@ -24,6 +24,7 @@ Window::Window(VulkanContext& context, uint32_t width, uint32_t height)
         width,
         height,
         window_flags);
+
     if (handle == NULL)
         throw std::runtime_error("Failed to open window" + std::string(SDL_GetError()));
 

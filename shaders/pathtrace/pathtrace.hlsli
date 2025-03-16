@@ -1,6 +1,9 @@
 #ifndef PATHTRACE_HLSLI_INCLUDED
 #define PATHTRACE_HLSLI_INCLUDED
 
+#define PI (3.141592654)
+#define INFINITY (1.0 / 0.0)
+
 struct UniformBufferObject
 {
     float4x4 inv_view;
@@ -33,9 +36,10 @@ struct Attributes
 
 struct RayPayload
 {
-    [[vk::location(0)]] float4 incoming_colour; // w component is distance
-    [[vk::location(1)]] uint4 rng_state;
-    [[vk::location(2)]] float3 next_direction;
+    [[vk::location(0)]] float4 scatter; // w component is distance
+    [[vk::location(1)]] float3 emission;
+    [[vk::location(2)]] uint4 rng_state;
+    [[vk::location(3)]] float3 next_direction;
 };
 
 uint taus_step(inout uint z, int s1, int s2, int s3, uint m)
@@ -80,9 +84,8 @@ float hybrid_taus(inout uint4 state)
 
 float3 rand_dir(inout uint4 rng_state) {
     //TODO try Box-Muller transform
-    const float pi = 3.141592654;
-    float theta = hybrid_taus(rng_state) * pi;
-    float phi = hybrid_taus(rng_state) * 2.0 * pi;
+    float theta = hybrid_taus(rng_state) * PI;
+    float phi = hybrid_taus(rng_state) * 2.0 * PI;
     return float3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
 }
 
@@ -95,6 +98,14 @@ uint4 get_seed(uint4 v0, uint4 v1) {
         v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e); 
     } 
     return v0;
+}
+
+float3 cosine_weighted_rand_dir(inout uint4 rng_state, float3 n) {
+    // TODO use more accurate method that uses tangent vectors
+    float a = 1.0 - 2.0 * hybrid_taus(rng_state);
+    float b = sqrt(1 - a * a);
+    float phi = 2.0 * PI * hybrid_taus(rng_state);
+    return float3(n.x + b * cos(phi), n.y + b * sin(phi), n.z + a);
 }
 
 #endif

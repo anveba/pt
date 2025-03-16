@@ -4,8 +4,17 @@
 #include "graphics/cmdpool.h"
 #include "graphics/descset.h"
 #include "graphics/shader.h"
+#include "graphics/ubo.h"
 #include "scene/scene.h"
 #include "scene/scenebuffer.h"
+
+struct RasteriseUniformData
+{
+    alignas(16) Mat4 mvp;
+    alignas(16) Vec3 view_pos;
+    alignas(16) Vec3 inv_light_dir_norm;
+    alignas(16) Mat3x4 normal;
+};
 
 class Rasteriser
 {
@@ -26,29 +35,17 @@ class Rasteriser
     VkExtent2D extent;
 
     SceneBuffer<RasteriseInstanceData> scene_buffer;
+    UniformBuffer<RasteriseUniformData> uniform_buffer;
 
     VkRenderPass render_pass;
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
 
-    struct UniformBufferObject
-    {
-        alignas(16) Mat4 mvp;
-        alignas(16) Vec3 view_pos;
-        alignas(16) Vec3 inv_light_dir_norm;
-        alignas(16) Mat3x4 normal;
-    };
-    VkBuffer uniform_buffer;
-    VkDeviceMemory uniform_buffer_memory;
-    UniformBufferObject* uniform_buffer_map;
-
     DescriptorSetLayout descriptor_set_layout;
     DescriptorSet descriptor_set;
 
     const VkFormat depth_format;
-
-    bool in_render;
 
     void set_scene(CommandPool& command_pool, const Scene& scene);
     void set_camera(CommandPool& command_pool, const Camera& camera);

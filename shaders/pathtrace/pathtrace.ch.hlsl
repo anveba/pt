@@ -43,10 +43,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     float3 obj_space_normal = normalize(alpha * v_a.normal + beta * v_b.normal + gamma * v_c.normal);
     float3 normal = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
 
-    payload.next_direction = normalize(rand_dir(payload.rng_state));
-    if (dot(normal, payload.next_direction) < 0.0) {
-        payload.next_direction = -payload.next_direction;
-    }
-
-    payload.incoming_colour = float4(float3(1.0, 1.0, 1.0) * dot(normal, payload.next_direction), dist);
+    payload.next_direction = normalize(cosine_weighted_rand_dir(payload.rng_state, normal));
+    payload.scatter = float4(0.5, 0.2, 0.1, dist);
+    payload.emission = float3(0.0, 0.0, 0.0);
 }

@@ -43,22 +43,18 @@ PathTracer::PathTracer(
     const Scene& scene,
     VkExtent2D extent)
     : device(device)
-    , extent(extent)
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR), VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
     , acceleration_structure(device, command_pool, scene_buffer)
+    , uniform_buffer(device)
+    , accumulation_image(device, command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT)
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings())
     , descriptor_set(descriptor_pool, descriptor_set_layout)
-    , in_render(false)
 {
     Splitmix32 sm(1);
     rng = Xshiro128(sm.next(), sm.next(), sm.next(), sm.next());
 
-    create_dest_image(command_pool);
     create_pipeline();
     create_shader_binding_tables();
-
-    device.create_buffer(uniform_buffer, uniform_buffer_memory, sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkMapMemory(device.logical_handle(), uniform_buffer_memory, 0, sizeof(UniformBufferObject), 0, (void**)&uniform_map);
 
     set_scene(command_pool, scene);
 
@@ -68,52 +64,11 @@ PathTracer::PathTracer(
 
 PathTracer::~PathTracer()
 {
-    vkDestroyBuffer(device.logical_handle(), uniform_buffer, nullptr);
-    vkUnmapMemory(device.logical_handle(), uniform_buffer_memory);
-    vkFreeMemory(device.logical_handle(), uniform_buffer_memory, nullptr);
-
-    destroy_dest_image();
-
     vkDestroyPipeline(device.logical_handle(), pipeline, nullptr);
     vkDestroyPipelineLayout(device.logical_handle(), pipeline_layout, nullptr);
 
     vkDestroyBuffer(device.logical_handle(), shader_group_buffer, nullptr);
     vkFreeMemory(device.logical_handle(), shader_group_buffer_memory, nullptr);
-}
-
-void PathTracer::create_dest_image(CommandPool& command_pool)
-{
-    VkFormat format = VK_FORMAT_B8G8R8A8_UNORM; // TODO: hdr
-    device.create_image(dest_image,
-                        dest_image_memory,
-                        extent.width,
-                        extent.height,
-                        format,
-                        VK_IMAGE_TILING_OPTIMAL,
-                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    dest_image_view = device.create_image_view(dest_image, format, VK_IMAGE_ASPECT_COLOR_BIT);
-
-    VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
-
-    transition_image_layout(command_buffer,
-                            dest_image,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_GENERAL,
-                            0,
-                            0,
-                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-
-    command_pool.end_one_time_use_command_buffer(command_buffer, device.get_graphics_queue());
-}
-
-void PathTracer::destroy_dest_image()
-{
-    vkDestroyImageView(device.logical_handle(), dest_image_view, nullptr);
-    vkDestroyImage(device.logical_handle(), dest_image, nullptr);
-    vkFreeMemory(device.logical_handle(), dest_image_memory, nullptr);
 }
 
 void PathTracer::create_shader_binding_tables()
@@ -222,8 +177,8 @@ void PathTracer::create_pipeline()
 
 void PathTracer::update_descriptor_sets()
 {
-    VkDescriptorImageInfo dest_image_descriptor = DescriptorSet::create_descriptor(dest_image_view, VK_IMAGE_LAYOUT_GENERAL);
-    VkDescriptorBufferInfo ubo_descriptor = DescriptorSet::create_descriptor(uniform_buffer, sizeof(UniformBufferObject));
+    VkDescriptorImageInfo dest_image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
+    VkDescriptorBufferInfo ubo_descriptor = DescriptorSet::create_descriptor(uniform_buffer.handle(), uniform_buffer.size());
     VkDescriptorBufferInfo vertex_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.vertex_region_size(), scene_buffer.get_vertex_offset());
     VkDescriptorBufferInfo index_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.index_region_size(), scene_buffer.get_index_offset());
     VkDescriptorBufferInfo object_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.instance_region_size(), scene_buffer.get_instance_offset());
@@ -261,10 +216,10 @@ void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
     Mat4 view = camera.view_matrix();
     Mat4 proj = camera.projection_matrix();
 
-    uniform_map->inv_proj = glm::inverse(proj);
-    uniform_map->inv_view = glm::inverse(view);
-    uniform_map->near = camera.near;
-    uniform_map->far = camera.far;
+    uniform_buffer.get_map()->inv_proj = glm::inverse(proj);
+    uniform_buffer.get_map()->inv_view = glm::inverse(view);
+    uniform_buffer.get_map()->near = camera.near;
+    uniform_buffer.get_map()->far = camera.far;
 
     samples_taken = 0;
 }
@@ -272,14 +227,14 @@ void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
 void PathTracer::set_samples(uint32_t samples)
 {
     if (samples == 0)
-        throw std::runtime_error("Samples was zero.");
-    uniform_map->samples = samples;
+        throw std::runtime_error("Sample count was zero.");
+    uniform_buffer.get_map()->samples = samples;
 }
 
 void PathTracer::set_max_bounces(uint32_t max_bounces)
 {
     samples_taken = 0;
-    uniform_map->max_bounces = max_bounces;
+    uniform_buffer.get_map()->max_bounces = max_bounces;
 }
 
 void PathTracer::write_command_buffer(VkCommandBuffer command_buffer)
@@ -316,27 +271,24 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer)
         &miss_sbt,
         &hit_sbt,
         &callable_sbt,
-        extent.width,
-        extent.height,
+        accumulation_image.get_extent().width,
+        accumulation_image.get_extent().height,
         1);
 }
 
 void PathTracer::set_extent(CommandPool& command_pool, uint32_t width, uint32_t height)
 {
-    extent.width = width;
-    extent.height = height;
-    destroy_dest_image();
-    create_dest_image(command_pool);
+    accumulation_image.rebuild(command_pool, { width, height }, accumulation_image.get_format());
 
-    VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(dest_image_view, VK_IMAGE_LAYOUT_GENERAL);
+    VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
     VkWriteDescriptorSet write_descriptor_set = descriptor_set.write_descriptor_set(image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     DescriptorSet::update_write_descriptors(device, &write_descriptor_set, 1);
 }
 
 void PathTracer::update_uniforms()
 {
-    uniform_map->new_samples_mult = (float)uniform_map->samples / (samples_taken + uniform_map->samples);
-    uniform_map->old_samples_mult = (float)samples_taken / (samples_taken + uniform_map->samples);
-    uniform_map->seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
-    samples_taken += uniform_map->samples;
+    uniform_buffer.get_map()->new_samples_mult = (float)uniform_buffer.get_map()->samples / (samples_taken + uniform_buffer.get_map()->samples);
+    uniform_buffer.get_map()->old_samples_mult = (float)samples_taken / (samples_taken + uniform_buffer.get_map()->samples);
+    uniform_buffer.get_map()->seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
+    samples_taken += uniform_buffer.get_map()->samples;
 }

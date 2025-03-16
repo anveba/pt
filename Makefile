@@ -45,7 +45,8 @@ $(OUT_DIR)/%.spv: %.hlsl
 get_shader_model = \
 	$(if $(findstring .vs,$1),vs_6_0, \
 	$(if $(findstring .ps,$1),ps_6_0, \
-	lib_6_3))
+	$(if $(findstring .cs,$1),cs_6_0, \
+	lib_6_3)))
 
 clean:
 	rm -rf $(OBJ_DIR) $(OUT_DIR)

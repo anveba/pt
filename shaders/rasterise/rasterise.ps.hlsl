@@ -12,6 +12,7 @@ float4 main(vs_out input) : SV_TARGET {
   float3 d_colour = float3(0.4, 0.8, 0.7);
   float3 s_colour = float3(1.0, 1.0, 1.0);
   float3 colour = specular * 0.7 * s_colour + (0.5 * diffuse + 0.03) * d_colour;
-  float inv_gamma = 1 / 2.2;
+  
+  const float inv_gamma = 1.0 / 2.2;
   return float4(pow(colour, float3(inv_gamma, inv_gamma, inv_gamma)), 1.0);
 }

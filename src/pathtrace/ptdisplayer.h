@@ -6,7 +6,9 @@
 #include "graphics/cmdpool.h"
 #include "graphics/descpool.h"
 #include "graphics/fence.h"
+#include "graphics/storageimage.h"
 #include "pathtrace/pathtrace.h"
+#include "postprocess/postprocess.h"
 
 class PathTraceDisplayer : public IDisplayable
 {
@@ -41,11 +43,14 @@ class PathTraceDisplayer : public IDisplayable
     Semaphore render_semaphore;
     Fence render_fence;
 
+    StorageImage intermediate_image;
+
     std::vector<VkFramebuffer> framebuffers;
 
     Display& display;
     CommandPool& command_pool;
     PathTracer path_tracer;
+    PostProcessing post_processor;
     VkCommandBuffer command_buffer;
 
     bool in_render;

@@ -2,6 +2,7 @@
 
 #include "fps.h"
 #include "pathtrace/ptdisplayer.h"
+#include "postprocess/postprocess.h"
 #include "rasterise/rasterisedisplayer.h"
 
 static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
@@ -15,6 +16,9 @@ static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
     pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
 
     extra = PathTracer::get_descriptor_pool_sizes();
+    pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
+
+    extra = PostProcessing::get_descriptor_pool_sizes();
     pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
 
     return pool_sizes;

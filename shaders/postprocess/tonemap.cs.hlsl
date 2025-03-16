@@ -1,0 +1,52 @@
+
+RWTexture2D<float4> source_image : register(u0);
+RWTexture2D<float4> result_image : register(u1);
+
+// Reference: https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
+
+static const float3x3 srgb_to_rrt_mat =
+{
+    {0.59719, 0.35458, 0.04823},
+    {0.07600, 0.90834, 0.01566},
+    {0.02840, 0.13383, 0.83777}
+};
+
+static const float3x3 odt_to_srgb_mat =
+{
+    { 1.60475, -0.53108, -0.07367},
+    {-0.10208,  1.10813, -0.00605},
+    {-0.00327, -0.07276,  1.07602}
+};
+
+float to_srgb(float x) {
+    if (x <= 0.00031308)
+        return 12.92 * x;
+    else
+        return 1.055 * pow(x, (1.0 / 2.4) ) - 0.055;
+}
+
+float3 rrt_to_odt_fit(float3 v)
+{
+    float3 a = v * (v + 0.0245786f) - 0.000090537f;
+    float3 b = v * (0.983729f * v + 0.4329510f) + 0.238081f;
+    return a / b;
+}
+
+float3 aces(float3 col)
+{
+    col = float3(to_srgb(col.r), to_srgb(col.g), to_srgb(col.b));
+    col = mul(srgb_to_rrt_mat, col);
+    col = rrt_to_odt_fit(col);
+    col = mul(odt_to_srgb_mat, col);
+
+    return saturate(col);
+}
+
+[numthreads(16, 16, 1)] 
+void main(uint3 dispatch_id : SV_DispatchThreadID)
+{
+    int2 coord = dispatch_id.xy;
+    float4 input = source_image[coord];
+    
+    result_image[coord] = float4(aces(input.rgb), input.a);
+}

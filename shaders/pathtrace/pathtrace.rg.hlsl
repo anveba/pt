@@ -30,13 +30,15 @@ void main()
         ray_desc.Direction = mul(ubo.inv_view, float4(normalize(target.xyz), 0.0)).xyz;
         ray_desc.TMin = ubo.near;
         ray_desc.TMax = ubo.far;
+
+        float3 attenuation = float3(1.0, 1.0, 1.0);
    
         TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
-
-        float3 ray_colour = payload.incoming_colour.xyz;
+        colour_sum += payload.emission * attenuation;
+        attenuation *= payload.scatter.rgb;
 
         // Check if initial ray hit. If so, we continue tracing rays.
-        if (!isinf(payload.incoming_colour.w)) {
+        if (!isinf(payload.scatter.w)) {
 
             ray_desc.TMin = 0.001;
             ray_desc.TMax = 10000.0;
@@ -44,23 +46,17 @@ void main()
             uint i;
             for (i = 0; i <= ubo.max_bounces; i++) {
 
-                ray_desc.Origin = ray_desc.Origin + payload.incoming_colour.w * ray_desc.Direction;
+                ray_desc.Origin = ray_desc.Origin + payload.scatter.w * ray_desc.Direction;
                 ray_desc.Direction = payload.next_direction;
 
                 TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
+                colour_sum += payload.emission * attenuation;
+                attenuation *= payload.scatter.rgb;
 
-                ray_colour *= payload.incoming_colour.xyz;
-
-                if (isinf(payload.incoming_colour.w))
+                if (isinf(payload.scatter.w))
                     break;
             }
-
-            // TODO Check if ray reaches depth limit
-            // if (i > ubo.max_bounces)
-            //     ray_colour = float3(0.0, 0.0, 0.0);
         }
-
-        colour_sum += ray_colour;
     }
 
     dest_image[int2(id.xy)] = ubo.old_samples_mult * dest_image[int2(id.xy)] + ubo.new_samples_mult * float4(colour_sum / ubo.samples, 0.0);

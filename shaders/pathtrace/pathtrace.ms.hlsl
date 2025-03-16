@@ -1,9 +1,10 @@
 #include "pathtrace.hlsli"
 
 [shader("miss")]
-void main(inout RayPayload p)
+void main(inout RayPayload payload)
 {
-    const float infinity = 1.0 / 0.0;
     float t = (dot(normalize(WorldRayDirection()), float3(0.0, 1.0, 0.0)) + 1.0) * 0.5;
-    p.incoming_colour = float4(t * float3(0.5, 0.8, 0.95) + (1 - t) * float3(0.2, 0.05, 0.35), infinity);
+    float3 sky_colour = t * float3(0.5, 0.7, 1.0) + (1 - t) * float3(0.15, 0.05, 0.1);
+    payload.scatter = float4(0.0, 0.0, 0.0, INFINITY);
+    payload.emission = float3(sky_colour);
 }

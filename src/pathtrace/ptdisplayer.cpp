@@ -12,9 +12,11 @@ PathTraceDisplayer::PathTraceDisplayer(
     : image_semaphore(display.get_device(), false)
     , render_semaphore(display.get_device(), false)
     , render_fence(display.get_device(), true)
+    , intermediate_image(display.get_device(), command_pool, extent, VK_FORMAT_B8G8R8A8_UNORM)
     , display(display)
     , command_pool(command_pool)
     , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, extent)
+    , post_processor(display.get_device(), descriptor_pool, command_pool, extent, path_tracer.get_accumulation_image().get_view(), intermediate_image.get_view())
     , in_render(false)
 {
     create_render_pass();
@@ -24,14 +26,18 @@ PathTraceDisplayer::PathTraceDisplayer(
 
 PathTraceDisplayer::~PathTraceDisplayer()
 {
+    command_pool.destroy_command_buffer(command_buffer);
     destroy_framebuffers();
     vkDestroyRenderPass(display.get_device().logical_handle(), render_pass, nullptr);
-    command_pool.destroy_command_buffer(command_buffer);
 }
 
 void PathTraceDisplayer::set_extent(uint32_t width, uint32_t height)
 {
     path_tracer.set_extent(command_pool, width, height);
+    intermediate_image.rebuild(command_pool, path_tracer.get_accumulation_image().get_extent(), intermediate_image.get_format());
+    post_processor.set_source_image(path_tracer.get_accumulation_image().get_view());
+    post_processor.set_result_image(intermediate_image.get_view());
+    post_processor.set_extent(path_tracer.get_accumulation_image().get_extent());
 
     destroy_framebuffers();
     create_framebuffers();
@@ -56,10 +62,10 @@ void PathTraceDisplayer::begin_render()
 {
     render_fence.wait();
 
-    uint32_t index = display.acquire_next_index(image_semaphore);
-
     if (in_render)
         throw std::runtime_error("Ray tracer is already rendering.");
+
+    uint32_t index = display.acquire_next_index(image_semaphore);
 
     path_tracer.update_uniforms();
 
@@ -76,6 +82,42 @@ void PathTraceDisplayer::begin_render()
     // TODO avoid writing each frame (implement together with frames in flight)
     path_tracer.write_command_buffer(command_buffer);
 
+    // TODO look into if this barrier is necessary and correct (or if this needs more synchronisation)
+    std::vector<VkImageMemoryBarrier> barriers;
+
+    auto image_barrier = [](VkImage image) {
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        barrier.image = image;
+        return barrier;
+    };
+
+    barriers.emplace_back(image_barrier(path_tracer.get_accumulation_image().handle()));
+
+    vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_HOST_BIT,
+        0,
+        // Memory
+        0,
+        VK_NULL_HANDLE,
+        // Buffers
+        0,
+        VK_NULL_HANDLE,
+        // Images
+        static_cast<uint32_t>(barriers.size()),
+        barriers.data());
+
+    post_processor.write_command_buffer(command_buffer);
+
     copy_result(display.get_swap_chain().images[index]);
 
     VkRenderPassBeginInfo render_pass_begin_info{};
@@ -83,7 +125,7 @@ void PathTraceDisplayer::begin_render()
     render_pass_begin_info.renderPass = render_pass;
     render_pass_begin_info.framebuffer = framebuffers[index];
     render_pass_begin_info.renderArea.offset = { 0, 0 };
-    render_pass_begin_info.renderArea.extent = path_tracer.extent;
+    render_pass_begin_info.renderArea.extent = intermediate_image.get_extent();
 
     vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -127,7 +169,7 @@ void PathTraceDisplayer::end_render()
 void PathTraceDisplayer::get_debug_info(RenderDebugInfo& info)
 {
     info = {};
-    info.samples = path_tracer.samples_taken + path_tracer.get_samples_per_render();
+    info.samples = path_tracer.accumulated_samples() + path_tracer.get_samples_per_render();
 }
 
 void PathTraceDisplayer::set_settings(const UiControlPanel& control_panel)
@@ -245,7 +287,7 @@ void PathTraceDisplayer::copy_result(VkImage image)
                             subresource_range);
 
     transition_image_layout(command_buffer,
-                            path_tracer.dest_image,
+                            intermediate_image.handle(),
                             VK_IMAGE_LAYOUT_GENERAL,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             0,
@@ -259,8 +301,8 @@ void PathTraceDisplayer::copy_result(VkImage image)
     copy_region.srcOffset = { 0, 0, 0 };
     copy_region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     copy_region.dstOffset = { 0, 0, 0 };
-    copy_region.extent = { path_tracer.extent.width, path_tracer.extent.height, 1 };
-    vkCmdCopyImage(command_buffer, path_tracer.dest_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+    copy_region.extent = { intermediate_image.get_extent().width, intermediate_image.get_extent().height, 1 };
+    vkCmdCopyImage(command_buffer, intermediate_image.handle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
     transition_image_layout(command_buffer,
                             image,
@@ -273,7 +315,7 @@ void PathTraceDisplayer::copy_result(VkImage image)
                             subresource_range);
 
     transition_image_layout(command_buffer,
-                            path_tracer.dest_image,
+                            intermediate_image.handle(),
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             VK_IMAGE_LAYOUT_GENERAL,
                             VK_ACCESS_TRANSFER_READ_BIT,

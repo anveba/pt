@@ -3,41 +3,21 @@
 
 #include "colour.h"
 
-class PhongMaterial
+class PbrMaterial
 {
   public:
-    PhongMaterial()
-        : amb(Colour(1.0f, 0.0f, 1.0f))
-        , dif(Colour(1.0f, 0.0f, 1.0f))
-        , spe(Colour(1.0f, 0.0f, 1.0f))
-        , shi(1.0)
+    PbrMaterial()
+        : PbrMaterial(base_colour)
     {
     }
 
-    PhongMaterial(
-        const Colour& ambient,
-        const Colour& diffuse,
-        const Colour& specular,
-        float shininess)
-        : amb(ambient)
-        , dif(diffuse)
-        , spe(specular)
-        , shi(shininess)
+    PbrMaterial(
+        const Colour& base_colour)
+        : base_colour(base_colour)
     {
     }
 
-    Colour& ambient() { return amb; }
-    Colour& diffuse() { return dif; }
-    Colour& specular() { return spe; }
-    float& shininess() { return shi; }
-    const Colour& ambient() const { return amb; }
-    const Colour& diffuse() const { return dif; }
-    const Colour& specular() const { return spe; }
-    const float& shininess() const { return shi; }
-
-  private:
-    Colour amb, dif, spe;
-    float shi;
+    Colour base_colour;
 };
 
 #endif
