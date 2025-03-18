@@ -54,24 +54,24 @@ template<>
 inline void populate_instance_data<PathTraceInstanceData>(
     PathTraceInstanceData& instance_data,
     const ObjectVariant& variant,
-    size_t idx,
+    size_t instance_index,
     uint32_t vertex_index,
     uint32_t index_index)
 {
     instance_data.vertex_index = vertex_index;
     instance_data.index_index = index_index;
-    instance_data.material_index = 0; // TODO
+    instance_data.material_index = variant.instances[instance_index].material_index;
 }
 
 template<>
 inline void populate_instance_data<RasteriseInstanceData>(
     RasteriseInstanceData& instance_data,
     const ObjectVariant& variant,
-    size_t idx,
+    size_t instance_index,
     uint32_t vertex_index,
     uint32_t index_index)
 {
-    instance_data.transform = variant.instances[idx].transform.matrix;
+    instance_data.transform = variant.instances[instance_index].transform.matrix;
     instance_data.normal = glm::transpose(glm::inverse(instance_data.transform));
 }
 
@@ -101,7 +101,7 @@ inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
 {
     assert(scene != nullptr);
 
-    size_t vertex_count = 0, tri_count = 0, instance_count = 0;
+    size_t vertex_count = 0, tri_count = 0, instance_count = 0, material_count = scene->get_materials().size();
     const std::vector<ObjectVariant>& object_variants = scene->get_object_variants();
 
     for (const ObjectVariant& variant : object_variants) {
@@ -111,13 +111,15 @@ inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
     }
 
     const VkDeviceSize alignment = device.get_physical_device_info().properties.limits.minStorageBufferOffsetAlignment;
+
     const size_t vertex_region_size = round_up_to<size_t>(vertex_count * sizeof(Vertex), alignment);
     const size_t index_region_size = round_up_to<size_t>(tri_count * sizeof(IndexedTriangle), alignment);
-    const size_t instance_region_size = instance_count * sizeof(T);
+    const size_t instance_region_size = round_up_to<size_t>(instance_count * sizeof(T), alignment);
+    const size_t material_region_size = round_up_to<size_t>(material_count * sizeof(PbrMaterial), alignment);
 
-    const size_t total_buffer_size = vertex_region_size + index_region_size + instance_region_size;
-
+    const size_t total_buffer_size = vertex_region_size + index_region_size + instance_region_size + material_region_size;
     uint8_t* const all_data = new uint8_t[total_buffer_size];
+
     Vertex* const vertex_data = (Vertex*)all_data;
     uint32_t* const index_data = (uint32_t*)((uint8_t*)vertex_data + vertex_region_size);
     T* const instance_data = (T*)((uint8_t*)index_data + index_region_size);
@@ -149,6 +151,9 @@ inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
     assert(start_indices.back().index == tri_count * 3);
     assert(start_indices.back().instance == instance_count);
 
+    PbrMaterial* const material_data = (PbrMaterial*)((uint8_t*)instance_data + instance_region_size);
+    memcpy(material_data, scene->get_materials().data(), scene->get_materials().size() * sizeof(PbrMaterial));
+
     device.create_buffer(buffer,
                          buffer_memory,
                          total_buffer_size,
@@ -162,6 +167,7 @@ inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
 
     index_offset = vertex_region_size;
     instance_offset = index_offset + index_region_size;
+    material_offset = instance_offset + instance_region_size;
     buffer_size = total_buffer_size;
 
     delete[] all_data;

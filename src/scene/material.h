@@ -7,17 +7,11 @@ class PbrMaterial
 {
   public:
     PbrMaterial()
-        : PbrMaterial(base_colour)
     {
     }
 
-    PbrMaterial(
-        const Colour& base_colour)
-        : base_colour(base_colour)
-    {
-    }
-
-    Colour base_colour;
+    alignas(16) Vec4 base_colour;
+    alignas(16) Vec4 emission;
 };
 
 #endif

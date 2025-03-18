@@ -46,10 +46,12 @@ class SceneBuffer
     inline VkDeviceSize get_vertex_offset() const { return 0; }
     inline VkDeviceSize get_index_offset() const { return index_offset; }
     inline VkDeviceSize get_instance_offset() const { return instance_offset; }
+    inline VkDeviceSize get_material_offset() const { return material_offset; }
 
     inline VkDeviceSize vertex_region_size() const { return index_offset; }
     inline VkDeviceSize index_region_size() const { return instance_offset - index_offset; }
-    inline VkDeviceSize instance_region_size() const { return buffer_size - instance_offset; }
+    inline VkDeviceSize instance_region_size() const { return material_offset - instance_offset; }
+    inline VkDeviceSize material_region_size() const { return buffer_size - material_offset; }
     inline VkDeviceSize get_buffer_size() const { return buffer_size; }
 
     // Goes from i = 0 to i = number of object variants, inclusive. The last element contains the end indices.
@@ -66,6 +68,7 @@ class SceneBuffer
 
     VkDeviceSize index_offset;
     VkDeviceSize instance_offset;
+    VkDeviceSize material_offset;
     VkDeviceSize buffer_size;
 
     std::vector<BufferIndices> start_indices;

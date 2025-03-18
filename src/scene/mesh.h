@@ -35,7 +35,9 @@ class Mesh
     {
     }
 
+    std::vector<Vertex>& get_vertices() { return vertices; }
     const std::vector<Vertex>& get_vertices() const { return vertices; }
+    std::vector<IndexedTriangle>& get_indexed_triangles() { return tris; }
     const std::vector<IndexedTriangle>& get_indexed_triangles() const { return tris; }
 
   private:

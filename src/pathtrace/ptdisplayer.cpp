@@ -65,9 +65,9 @@ void PathTraceDisplayer::begin_render()
     if (in_render)
         throw std::runtime_error("Ray tracer is already rendering.");
 
-    uint32_t index = display.acquire_next_index(image_semaphore);
-
     path_tracer.update_uniforms();
+
+    uint32_t index = display.acquire_next_index(image_semaphore);
 
     vkResetCommandBuffer(command_buffer, 0);
 
@@ -103,8 +103,8 @@ void PathTraceDisplayer::begin_render()
 
     vkCmdPipelineBarrier(
         command_buffer,
-        VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_HOST_BIT,
+        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0,
         // Memory
         0,

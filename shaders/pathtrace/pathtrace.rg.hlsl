@@ -27,18 +27,18 @@ void main()
 
         RayDesc ray_desc;
         ray_desc.Origin = mul(ubo.inv_view, float4(0.0, 0.0, 0.0, 1.0)).xyz;
-        ray_desc.Direction = mul(ubo.inv_view, float4(normalize(target.xyz), 0.0)).xyz;
+        ray_desc.Direction = normalize(mul(ubo.inv_view, float4(target.xyz, 0.0)).xyz);
         ray_desc.TMin = ubo.near;
         ray_desc.TMax = ubo.far;
 
-        float3 attenuation = float3(1.0, 1.0, 1.0);
+        float3 scattered = float3(1.0, 1.0, 1.0);
    
         TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
-        colour_sum += payload.emission * attenuation;
-        attenuation *= payload.scatter.rgb;
+        colour_sum += payload.emission * scattered;
+        scattered *= payload.scattered.rgb;
 
         // Check if initial ray hit. If so, we continue tracing rays.
-        if (!isinf(payload.scatter.w)) {
+        if (!isinf(payload.scattered.w)) {
 
             ray_desc.TMin = 0.001;
             ray_desc.TMax = 10000.0;
@@ -46,14 +46,14 @@ void main()
             uint i;
             for (i = 0; i <= ubo.max_bounces; i++) {
 
-                ray_desc.Origin = ray_desc.Origin + payload.scatter.w * ray_desc.Direction;
-                ray_desc.Direction = payload.next_direction;
+                ray_desc.Origin = ray_desc.Origin + payload.scattered.w * ray_desc.Direction;
+                ray_desc.Direction = payload.direction;
 
                 TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
-                colour_sum += payload.emission * attenuation;
-                attenuation *= payload.scatter.rgb;
+                colour_sum += payload.emission * scattered;
+                scattered *= payload.scattered.rgb;
 
-                if (isinf(payload.scatter.w))
+                if (isinf(payload.scattered.w))
                     break;
             }
         }

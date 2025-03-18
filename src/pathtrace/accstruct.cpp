@@ -169,12 +169,15 @@ static VkTransformMatrixKHR to_vk_transform_matrix(const Mat4& mat)
     vkTransformMatrix.matrix[0][0] = mat[0][0];
     vkTransformMatrix.matrix[0][1] = mat[0][1];
     vkTransformMatrix.matrix[0][2] = mat[0][2];
+    vkTransformMatrix.matrix[0][3] = mat[0][3];
     vkTransformMatrix.matrix[1][0] = mat[1][0];
     vkTransformMatrix.matrix[1][1] = mat[1][1];
     vkTransformMatrix.matrix[1][2] = mat[1][2];
+    vkTransformMatrix.matrix[1][3] = mat[1][3];
     vkTransformMatrix.matrix[2][0] = mat[2][0];
     vkTransformMatrix.matrix[2][1] = mat[2][1];
     vkTransformMatrix.matrix[2][2] = mat[2][2];
+    vkTransformMatrix.matrix[2][3] = mat[2][3];
 
     return vkTransformMatrix;
 }
@@ -189,7 +192,7 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool)
         total_instance_count += object_variant.instances.size();
 
     std::vector<VkAccelerationStructureInstanceKHR> instances;
-    instances.reserve(total_instance_count);
+    instances.resize(total_instance_count);
 
     uint32_t instance_index = 0;
 
@@ -202,19 +205,16 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool)
         const ObjectVariant& object_variant = scene_buffer->get_scene().get_object_variants()[i];
 
         for (size_t j = 0; j < object_variant.instances.size(); j++) {
-            instances.emplace_back();
-            VkAccelerationStructureInstanceKHR& acceleration_structure_instance = instances.back();
-            acceleration_structure_instance = {};
-            acceleration_structure_instance.transform = to_vk_transform_matrix(object_variant.instances[j].transform.matrix);
-            acceleration_structure_instance.instanceCustomIndex = instance_index++;
-            acceleration_structure_instance.mask = 0xFF;
-            acceleration_structure_instance.instanceShaderBindingTableRecordOffset = 0;
-            acceleration_structure_instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-            acceleration_structure_instance.accelerationStructureReference = blas_address;
+            VkAccelerationStructureInstanceKHR& instance = instances[j];
+            instance = {};
+            instance.transform = to_vk_transform_matrix(object_variant.instances[j].transform.matrix);
+            instance.instanceCustomIndex = instance_index++;
+            instance.mask = 0xFF;
+            instance.instanceShaderBindingTableRecordOffset = 0;
+            instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            instance.accelerationStructureReference = blas_address;
         }
     }
-
-    assert(instances.size() == total_instance_count);
 
     VkBuffer instance_buffer;
     VkDeviceMemory instance_buffer_memory;

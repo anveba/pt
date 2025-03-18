@@ -1,6 +1,7 @@
 #include "display/windowapp.h"
 #include "scene/camera.h"
 #include "scene/scene.h"
+#include "scene/scenebuild.h"
 #include <SDL3/SDL.h>
 #include <iostream>
 
@@ -23,7 +24,9 @@ int main(int argc, char** argv)
                   0.1f,
                   1000.0f);
     Scene scene;
+    SceneBuilder builder;
     scene.from_file(std::string(argv[1]), camera);
+    builder.set_material_scene(scene, camera);
 
     std::vector<const char*> validation_layers;
 #ifndef NDEBUG

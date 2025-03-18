@@ -17,6 +17,11 @@ struct UniformBufferObject
     uint max_bounces;
 };
 
+struct PbrMaterial {
+    float4 base_colour;
+    float4 emission;
+};
+
 struct InstanceData {
     uint vertex_index;
     uint index_index;
@@ -36,10 +41,10 @@ struct Attributes
 
 struct RayPayload
 {
-    [[vk::location(0)]] float4 scatter; // w component is distance
+    [[vk::location(0)]] float4 scattered; // w component is distance
     [[vk::location(1)]] float3 emission;
     [[vk::location(2)]] uint4 rng_state;
-    [[vk::location(3)]] float3 next_direction;
+    [[vk::location(3)]] float3 direction;
 };
 
 uint taus_step(inout uint z, int s1, int s2, int s3, uint m)
