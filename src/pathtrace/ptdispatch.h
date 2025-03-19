@@ -7,26 +7,28 @@
 
 struct PathTraceParameters
 {
+    uint32_t width, height;
     uint32_t samples;
     uint32_t max_bounces;
 
     std::string out_path;
 };
 
-class PathTraceDispatch
+class PathTraceDispatcher
 {
-    PathTraceDispatch(const Scene& scene,
-                      VkExtent2D extent);
-    ~PathTraceDispatch();
+    PathTraceDispatcher(const std::vector<const char*>& validation_layers);
+    ~PathTraceDispatcher();
 
     void start(const PathTraceParameters& parameters);
 
   private:
-    Device& device;
-    CommandPool& command_pool;
+    VulkanContext context;
+    Device device;
+    CommandPool command_pool;
+    DescriptorPool descriptor_pool;
     PathTracer path_tracer;
 
-    NO_COPY(PathTraceDispatch);
+    NO_COPY(PathTraceDispatcher);
 };
 
 #endif

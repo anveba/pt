@@ -191,8 +191,7 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool)
     for (const ObjectVariant& object_variant : scene_buffer->get_scene().get_object_variants())
         total_instance_count += object_variant.instances.size();
 
-    std::vector<VkAccelerationStructureInstanceKHR> instances;
-    instances.resize(total_instance_count);
+    VkAccelerationStructureInstanceKHR* instances = new VkAccelerationStructureInstanceKHR[total_instance_count];
 
     uint32_t instance_index = 0;
 
@@ -221,14 +220,15 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool)
 
     device.create_buffer(instance_buffer,
                          instance_buffer_memory,
-                         instances.size() * sizeof(VkAccelerationStructureInstanceKHR),
+                         total_instance_count * sizeof(VkAccelerationStructureInstanceKHR),
                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
 
     command_pool.transfer_to_buffer(instance_buffer,
-                                    instances.data(),
-                                    instances.size() * sizeof(VkAccelerationStructureInstanceKHR));
+                                    instances,
+                                    total_instance_count * sizeof(VkAccelerationStructureInstanceKHR));
+    delete[] instances;
     VkDeviceOrHostAddressConstKHR instance_buffer_address = { .deviceAddress = device.get_buffer_address(instance_buffer) };
 
     VkAccelerationStructureGeometryKHR geometry{};

@@ -37,18 +37,24 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
     for (size_t i = 0; i < scene->mNumMaterials; i++) {
 
         const auto mat = scene->mMaterials[i];
-        aiColor3D base_colour, emission;
-        float roughness, specular;
+        aiColor3D base_colour, emission_colour;
+        float roughness, emission_intensity, specular, metalness;
         if (mat->Get(AI_MATKEY_BASE_COLOR, base_colour) != aiReturn_SUCCESS)
-            std::cout << "no base colour" << std::endl;
+            if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, base_colour) != aiReturn_SUCCESS)
+                base_colour = aiColor3D(1.0f, 1.0f, 1.0f);
         if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness) != aiReturn_SUCCESS)
-            std::cout << "no roughness" << std::endl;
-        if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission) != aiReturn_SUCCESS)
-            std::cout << "no emission" << std::endl;
+            roughness = 1.0f;
+        if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission_colour) != aiReturn_SUCCESS)
+            emission_colour = aiColor3D(1.0f, 1.0f, 1.0f);
+        if (mat->Get(AI_MATKEY_EMISSIVE_INTENSITY, emission_intensity) != aiReturn_SUCCESS)
+            emission_intensity = 0.0f;
         if (mat->Get(AI_MATKEY_SPECULAR_FACTOR, specular) != aiReturn_SUCCESS)
-            std::cout << "no specular" << std::endl;
+            specular = 1.0f;
+        if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metalness) != aiReturn_SUCCESS)
+            metalness = 1.0f;
         materials[i].base_colour = Vec4(base_colour.r, base_colour.g, base_colour.b, roughness);
-        materials[i].emission = Vec4(emission.r, emission.g, emission.b, specular);
+        materials[i].emission = Vec4(emission_colour.r, emission_colour.g, emission_colour.b, emission_intensity);
+        materials[i].metal_anisotropic = Vec4(metalness, 0.0f, 0.0f, 0.0f);
     }
 }
 

@@ -20,6 +20,10 @@ struct UniformBufferObject
 struct PbrMaterial {
     float4 base_colour;
     float4 emission;
+    float4 specular;
+    float4 sheen;
+    float4 clearcoat;
+    float4 metal_anisotropic;
 };
 
 struct InstanceData {
@@ -41,10 +45,10 @@ struct Attributes
 
 struct RayPayload
 {
-    [[vk::location(0)]] float4 scattered; // w component is distance
+    [[vk::location(0)]] float4 brdf; // w component is pdf. The cosine term is baked in.
     [[vk::location(1)]] float3 emission;
     [[vk::location(2)]] uint4 rng_state;
-    [[vk::location(3)]] float3 direction;
+    [[vk::location(3)]] float4 incoming_direction; // w component is distance
 };
 
 uint taus_step(inout uint z, int s1, int s2, int s3, uint m)
