@@ -128,7 +128,7 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
     for (uint32_t i = 0; i < queue_families.size(); i++) {
-        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+        if ((queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && (queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT)) {
             info.graphics_family_idx = i; // TODO split compute and graphics queue
         }
 

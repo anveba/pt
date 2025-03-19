@@ -8,7 +8,7 @@ static void create_acceleration_structure(
     const VkAccelerationStructureBuildSizesInfoKHR* size_infos,
     const VkAccelerationStructureGeometryKHR* geometries,
     const VkAccelerationStructureBuildRangeInfoKHR* const* range_info_ptrs,
-    VkDeviceSize max_scratch_size,
+    VkDeviceSize total_scratch_size,
     const size_t count,
     VkAccelerationStructureTypeKHR type)
 {
@@ -16,7 +16,7 @@ static void create_acceleration_structure(
     VkDeviceMemory scratch_buffer_memory;
     device.create_buffer(scratch_buffer,
                          scratch_buffer_memory,
-                         max_scratch_size,
+                         total_scratch_size,
                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
@@ -24,7 +24,7 @@ static void create_acceleration_structure(
 
     std::vector<VkAccelerationStructureBuildGeometryInfoKHR> build_geometry_infos;
     build_geometry_infos.resize(count);
-    VkDeviceSize acc_struct_offset = 0;
+    VkDeviceSize acc_struct_offset = 0, scratch_buffer_offset = 0;
 
     for (size_t i = 0; i < count; i++) {
 
@@ -36,8 +36,6 @@ static void create_acceleration_structure(
         acceleration_structure_create_info.offset = acc_struct_offset;
         vkCreateAccelerationStructureKHR(device.logical_handle(), &acceleration_structure_create_info, nullptr, &out[i]);
 
-        acc_struct_offset += round_up_to<VkDeviceSize>(size_infos[i].accelerationStructureSize, 256);
-
         VkAccelerationStructureBuildGeometryInfoKHR& build_geometry = build_geometry_infos[i];
         build_geometry = {};
         build_geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -47,7 +45,10 @@ static void create_acceleration_structure(
         build_geometry.dstAccelerationStructure = out[i];
         build_geometry.geometryCount = 1;
         build_geometry.pGeometries = &geometries[i];
-        build_geometry.scratchData.deviceAddress = scratch_buffer_address;
+        build_geometry.scratchData.deviceAddress = scratch_buffer_address + scratch_buffer_offset;
+
+        acc_struct_offset += round_up_to<VkDeviceSize>(size_infos[i].accelerationStructureSize, 256);
+        scratch_buffer_offset += size_infos[i].buildScratchSize;
     }
 
     VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
@@ -80,7 +81,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool)
     range_info_ptrs.resize(blas_count);
 
     VkDeviceSize total_blas_size = 0;
-    VkDeviceSize max_scratch_size = 0;
+    VkDeviceSize total_scratch_size = 0;
 
     VkDeviceAddress scene_buffer_address = device.get_buffer_address(scene_buffer->handle());
 
@@ -138,7 +139,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool)
             &size);
 
         total_blas_size += round_up_to<VkDeviceSize>(size.accelerationStructureSize, 256);
-        max_scratch_size = std::max(max_scratch_size, size.buildScratchSize);
+        total_scratch_size += size.buildScratchSize;
     }
 
     device.create_buffer(blas_buffer,
@@ -157,7 +158,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool)
         size_infos.data(),
         geometries.data(),
         range_info_ptrs.data(),
-        max_scratch_size,
+        total_scratch_size,
         blas_count,
         VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 }

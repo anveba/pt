@@ -110,7 +110,7 @@ static void render_loop(IDisplayable** displayers, Camera& camera, Display& disp
 
         current_displayer->end_render();
     }
-    current_displayer->wait_idle();
+    display.get_device().wait_idle();
     UserInterface::destroy_vulkan();
 }
 

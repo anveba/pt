@@ -10,7 +10,7 @@ CXX_FLAGS := -Wall -std=c++20 -march=native -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPT
 CXX_DEBUG_FLAGS = -p -g3 -DDEBUG
 CXX_RELEASE_FLAGS = -O2 -flto -DNDEBUG
 CXX_INCLUDE := -Isrc -Iinclude -Iinclude/vulkan -Iinclude/imgui
-CXX_LINK := -lvulkan `pkg-config sdl3 --libs` -lassimp
+CXX_LINK := -Llib -lvulkan -lSDL3 -lassimp
 DXC_FLAGS = -spirv -E main -fspv-target-env=vulkan1.3 -Wall -O3
 
 TARGET_NAME := pt
