@@ -82,40 +82,6 @@ void PathTraceDisplayer::begin_render()
     // TODO avoid writing each frame (implement together with frames in flight)
     path_tracer.write_command_buffer(command_buffer);
 
-    // TODO look into if this barrier is necessary and correct (or if this needs more synchronisation)
-    std::vector<VkImageMemoryBarrier> barriers;
-
-    auto image_barrier = [](VkImage image) {
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-        barrier.image = image;
-        return barrier;
-    };
-
-    barriers.emplace_back(image_barrier(path_tracer.get_accumulation_image().handle()));
-
-    vkCmdPipelineBarrier(
-        command_buffer,
-        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        // Memory
-        0,
-        VK_NULL_HANDLE,
-        // Buffers
-        0,
-        VK_NULL_HANDLE,
-        // Images
-        static_cast<uint32_t>(barriers.size()),
-        barriers.data());
-
     post_processor.write_command_buffer(command_buffer);
 
     copy_result(display.get_swap_chain().images[index]);
