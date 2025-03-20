@@ -22,7 +22,7 @@ int main(int argc, char** argv)
                   glm::radians(45.0f),
                   1.0f,
                   0.1f,
-                  1000.0f);
+                  10000.0f);
     Scene scene;
     SceneBuilder builder;
     scene.from_file(std::string(argv[1]), camera);

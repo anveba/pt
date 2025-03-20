@@ -89,7 +89,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     float3 base_colour = material.base_colour.rgb;
     float roughness = material.base_colour.a;
     float3 emission = material.emission.rgb * material.emission.a;
-    float metalness = material.metal_anisotropic.r;
+    float metalness = material.metalness_anisotropy.r;
 
     float3 f0 = lerp(0.05, base_colour, metalness);
     float material_alpha = lerp(0.1, 1.0, roughness);

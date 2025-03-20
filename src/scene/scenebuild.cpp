@@ -26,7 +26,7 @@ void SceneBuilder::set_material_scene(Scene& scene, Camera& camera)
     for (size_t i = 0; i < count; i++) {
         scene.materials[i].base_colour = Vec4(i / row_sz, 1 - i / row_sz, 0.0f, float(i % row_sz) / (row_sz - 1));
         scene.materials[i].emission = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
-        scene.materials[i].metal_anisotropic = Vec4((i / row_sz) % 2, 0.0f, 0.0f, 0.0f);
+        scene.materials[i].metalness_anisotropy = Vec4((i / row_sz) % 2, 0.0f, 0.0f, 0.0f);
 
         sphere.instances[i].transform = translation(Vec3(i % row_sz, i / row_sz, 0.0f) * spacing);
         sphere.instances[i].material_index = i;

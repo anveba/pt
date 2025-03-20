@@ -23,7 +23,9 @@ struct PbrMaterial {
     float4 specular;
     float4 sheen;
     float4 clearcoat;
-    float4 metal_anisotropic;
+    float4 metalness_anisotropy;
+    uint4 base_emission_roughness_specular_maps;
+    uint4 sheen_clearcoat_metalness_normal_maps;
 };
 
 struct InstanceData {

@@ -29,33 +29,83 @@ static Mat4 convert_matrix(aiMatrix4x4 m)
         m.d4);
 }
 
-static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& materials)
+static uint32_t process_texture(
+    const aiMaterial* mat, 
+    aiTextureType texture_type, 
+    std::unordered_map<std::string, uint32_t>& texture_index_map, 
+    uint32_t& current_texture_index) {
+    
+    if (mat->GetTextureCount(texture_type) == 0)
+        return UINT32_MAX;
+    aiString path;
+    mat->GetTexture(texture_type, 0, &path);
+    if (texture_index_map.count(path.C_Str()) == 0) {
+        texture_index_map[path.C_Str()] = current_texture_index;
+        return current_texture_index++;
+    } else {
+        return texture_index_map[path.C_Str()];
+    }
+}
+
+static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& materials, std::vector<std::string>& texture_paths)
 {
     assert(scene->mNumMaterials > 0);
+
     materials.resize(scene->mNumMaterials);
+    
+    std::unordered_map<std::string, uint32_t> texture_index_map;
+    uint32_t current_texture_index = 0;
 
     for (size_t i = 0; i < scene->mNumMaterials; i++) {
 
-        const auto mat = scene->mMaterials[i];
+        const aiMaterial* mat = scene->mMaterials[i];
         aiColor3D base_colour, emission_colour;
         float roughness, emission_intensity, specular, metalness;
+        bool includes_emission_data = true;
         if (mat->Get(AI_MATKEY_BASE_COLOR, base_colour) != aiReturn_SUCCESS)
             if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, base_colour) != aiReturn_SUCCESS)
                 base_colour = aiColor3D(1.0f, 1.0f, 1.0f);
         if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness) != aiReturn_SUCCESS)
             roughness = 1.0f;
-        if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission_colour) != aiReturn_SUCCESS)
+        if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission_colour) != aiReturn_SUCCESS) {
             emission_colour = aiColor3D(1.0f, 1.0f, 1.0f);
-        if (mat->Get(AI_MATKEY_EMISSIVE_INTENSITY, emission_intensity) != aiReturn_SUCCESS)
-            emission_intensity = 0.0f;
+            includes_emission_data = false;
+        }
         if (mat->Get(AI_MATKEY_SPECULAR_FACTOR, specular) != aiReturn_SUCCESS)
             specular = 1.0f;
         if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metalness) != aiReturn_SUCCESS)
             metalness = 1.0f;
         materials[i].base_colour = Vec4(base_colour.r, base_colour.g, base_colour.b, roughness);
         materials[i].emission = Vec4(emission_colour.r, emission_colour.g, emission_colour.b, emission_intensity);
-        materials[i].metal_anisotropic = Vec4(metalness, 0.0f, 0.0f, 0.0f);
+        materials[i].metalness_anisotropy = Vec4(metalness, 0.0f, 0.0f, 0.0f);
+
+        materials[i].base_emission_roughness_specular_maps = Uint4(
+            process_texture(mat, aiTextureType_BASE_COLOR, texture_index_map, current_texture_index),
+            process_texture(mat, aiTextureType_EMISSION_COLOR, texture_index_map, current_texture_index),
+            process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_index_map, current_texture_index),
+            process_texture(mat, aiTextureType_SPECULAR, texture_index_map, current_texture_index)
+        );
+        if (materials[i].base_emission_roughness_specular_maps.x == UINT32_MAX)
+            materials[i].base_emission_roughness_specular_maps.x = process_texture(mat, aiTextureType_DIFFUSE, texture_index_map, current_texture_index);
+        if (materials[i].base_emission_roughness_specular_maps.y == UINT32_MAX)
+            materials[i].base_emission_roughness_specular_maps.y = process_texture(mat, aiTextureType_EMISSIVE, texture_index_map, current_texture_index);
+        includes_emission_data = includes_emission_data || (materials[i].base_emission_roughness_specular_maps.y != UINT32_MAX);
+
+        materials[i].sheen_clearcoat_metalness_normal_maps = Uint4(
+            process_texture(mat, aiTextureType_SHEEN, texture_index_map, current_texture_index),
+            process_texture(mat, aiTextureType_CLEARCOAT, texture_index_map, current_texture_index),
+            process_texture(mat, aiTextureType_METALNESS, texture_index_map, current_texture_index),
+            process_texture(mat, aiTextureType_NORMALS, texture_index_map, current_texture_index)
+        );
+        if (mat->Get(AI_MATKEY_EMISSIVE_INTENSITY, emission_intensity) != aiReturn_SUCCESS)
+            emission_intensity = includes_emission_data ? 1.0f : 0.0f;
     }
+
+    texture_paths.resize(texture_index_map.size());
+
+    for (const auto& texture_index : texture_index_map) 
+        texture_paths[texture_index.second] = texture_index.first;
+    
 }
 
 static void process_meshes(const aiScene* scene, std::vector<ObjectVariant>& object_variants)
@@ -144,7 +194,7 @@ void Scene::from_file(const std::string& path, Camera& camera)
         assert(camera.far > camera.near);
     }
 
-    process_materials(scene, materials);
+    process_materials(scene, materials, texture_paths);
 
     process_meshes(scene, object_variants);
 

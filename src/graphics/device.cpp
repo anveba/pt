@@ -30,6 +30,7 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
     : graphics_queue(VK_NULL_HANDLE)
     , present_queue(VK_NULL_HANDLE)
     , compute_queue(VK_NULL_HANDLE)
+    , transfer_queue(VK_NULL_HANDLE)
     , context(context)
     , usage(usage)
 {
@@ -57,8 +58,10 @@ Device::Device(VulkanContext& context, DeviceUsage usage, Window* window)
         vkGetDeviceQueue(logical, physical_device_info.graphics_family_idx.value(), 0, &graphics_queue);
     if (physical_device_info.present_family_idx.has_value())
         vkGetDeviceQueue(logical, physical_device_info.present_family_idx.value(), 0, &present_queue);
-    if (physical_device_info.graphics_family_idx.has_value()) // TODO split graphics and compute queue
-        vkGetDeviceQueue(logical, physical_device_info.graphics_family_idx.value(), 0, &compute_queue);
+    if (physical_device_info.compute_family_idx.has_value())
+        vkGetDeviceQueue(logical, physical_device_info.compute_family_idx.value(), 0, &compute_queue);
+    if (physical_device_info.transfer_family_idx.has_value())
+        vkGetDeviceQueue(logical, physical_device_info.transfer_family_idx.value(), 0, &transfer_queue);
 
     if (usage & DEVICE_USAGE_RAY_TRACE_BIT)
         load_ray_trace_functions(context.handle(), logical);
@@ -128,9 +131,8 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
     for (uint32_t i = 0; i < queue_families.size(); i++) {
-        if ((queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && (queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT)) {
-            info.graphics_family_idx = i; // TODO split compute and graphics queue
-        }
+        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) 
+            info.graphics_family_idx = i;
 
         if (surface != VK_NULL_HANDLE) {
             VkBool32 present_support = false;
@@ -139,6 +141,12 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
                 info.present_family_idx = i;
             }
         }
+
+        if (queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+            info.compute_family_idx = i;
+
+        if (queue_families[i].queueFlags & VK_QUEUE_TRANSFER_BIT)
+            info.transfer_family_idx = i;
     }
 }
 
@@ -265,9 +273,11 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
     std::vector<const char*> required_extensions;
     get_required_extensions(required_extensions, usage);
 
-    std::set<uint32_t> unique_queue_families = {
+    std::set<uint32_t> unique_queue_families = { 
         physical_device_info.graphics_family_idx.value(),
-        physical_device_info.present_family_idx.value()
+        physical_device_info.present_family_idx.value(),
+        physical_device_info.compute_family_idx.value(),
+        physical_device_info.transfer_family_idx.value()
     };
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
 

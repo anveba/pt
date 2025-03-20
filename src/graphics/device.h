@@ -29,6 +29,8 @@ struct PhysicalDeviceInfo
 
     std::optional<uint32_t> graphics_family_idx;
     std::optional<uint32_t> present_family_idx;
+    std::optional<uint32_t> compute_family_idx;
+    std::optional<uint32_t> transfer_family_idx;
 };
 
 struct SwapChainSupport
@@ -94,6 +96,7 @@ class Device
     VkQueue graphics_queue;
     VkQueue present_queue;
     VkQueue compute_queue;
+    VkQueue transfer_queue;
 
     VulkanContext& context;
     const DeviceUsage usage;
