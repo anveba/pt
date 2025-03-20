@@ -84,7 +84,7 @@ void PathTraceDisplayer::begin_render()
 
     post_processor.write_command_buffer(command_buffer);
 
-    copy_result(display.get_swap_chain().images[index]);
+    blit_result(display.get_swap_chain().images[index], display.get_swap_chain().extent.width, display.get_swap_chain().extent.height);
 
     VkRenderPassBeginInfo render_pass_begin_info{};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -238,7 +238,7 @@ void PathTraceDisplayer::destroy_framebuffers()
         vkDestroyFramebuffer(display.get_device().logical_handle(), framebuffer, nullptr);
 }
 
-void PathTraceDisplayer::copy_result(VkImage image)
+void PathTraceDisplayer::blit_result(VkImage image, uint32_t width, uint32_t height)
 {
     VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
@@ -265,10 +265,14 @@ void PathTraceDisplayer::copy_result(VkImage image)
     VkImageBlit blit {};
     blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     blit.srcOffsets[0] = { 0, 0, 0 };
-    blit.srcOffsets[1] = { 400, 400, 1 };
+    blit.srcOffsets[1] = { 
+        static_cast<int32_t>(intermediate_image.get_extent().width), 
+        static_cast<int32_t>(intermediate_image.get_extent().height), 
+        1 
+    };
     blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     blit.dstOffsets[0] = { 0, 0, 0 };
-    blit.dstOffsets[1] = { 400, 400, 1 };
+    blit.dstOffsets[1] = { static_cast<int32_t>(width), static_cast<int32_t>(height), 1 };
     vkCmdBlitImage(command_buffer, intermediate_image.handle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
 
     transition_image_layout(command_buffer,

@@ -205,14 +205,15 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool)
         const ObjectVariant& object_variant = scene_buffer->get_scene().get_object_variants()[i];
 
         for (size_t j = 0; j < object_variant.instances.size(); j++) {
-            VkAccelerationStructureInstanceKHR& instance = instances[j];
+            VkAccelerationStructureInstanceKHR& instance = instances[instance_index];
             instance = {};
             instance.transform = to_vk_transform_matrix(object_variant.instances[j].transform.matrix);
-            instance.instanceCustomIndex = instance_index++;
+            instance.instanceCustomIndex = instance_index;
             instance.mask = 0xFF;
             instance.instanceShaderBindingTableRecordOffset = 0;
             instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
             instance.accelerationStructureReference = blas_address;
+            instance_index++;
         }
     }
 

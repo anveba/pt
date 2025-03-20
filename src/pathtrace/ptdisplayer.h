@@ -59,7 +59,7 @@ class PathTraceDisplayer : public IDisplayable
     void destroy_framebuffers();
     void create_render_pass();
 
-    void copy_result(VkImage image);
+    void blit_result(VkImage image, uint32_t width, uint32_t height);
 
     NO_COPY(PathTraceDisplayer);
 };

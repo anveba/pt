@@ -26,7 +26,7 @@ int main(int argc, char** argv)
     Scene scene;
     SceneBuilder builder;
     scene.from_file(std::string(argv[1]), camera);
-    builder.set_material_scene(scene, camera);
+    // builder.set_material_scene(scene, camera);
 
     std::vector<const char*> validation_layers;
 #ifndef NDEBUG
