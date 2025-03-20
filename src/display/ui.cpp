@@ -45,13 +45,13 @@ void UserInterface::init_vulkan(DescriptorPool& descriptor_pool, IDisplayable& d
     if (ui_displayer != nullptr)
         throw std::runtime_error("Vulkan usage for the user interface is already initialised.");
 
-    ImGui_ImplVulkan_InitInfo init_info = {};
+    ImGui_ImplVulkan_InitInfo init_info{};
     init_info.ApiVersion = VK_API_VERSION_1_3;
     init_info.Instance = descriptor_pool.get_device().get_context().handle();
     init_info.PhysicalDevice = descriptor_pool.get_device().physical_handle();
     init_info.Device = descriptor_pool.get_device().logical_handle();
-    init_info.QueueFamily = descriptor_pool.get_device().get_physical_device_info().present_family_idx.value();
-    init_info.Queue = descriptor_pool.get_device().get_present_queue();
+    init_info.QueueFamily = descriptor_pool.get_device().get_physical_device_info().graphics_family_idx.value();
+    init_info.Queue = descriptor_pool.get_device().get_graphics_queue();
     init_info.PipelineCache = VK_NULL_HANDLE;
     init_info.DescriptorPool = descriptor_pool.handle();
     init_info.RenderPass = displayable.get_render_pass();
@@ -106,7 +106,7 @@ void UserInterface::new_frame(const UiInfo& info)
     ImGui::Begin("Control Panel");
     ImGui::Combo("Rendering", (int*)&control_panel->render_type, "Path tracing\0Rasterisation\0");
     if (control_panel->render_type == RENDER_TYPE_PATH_TRACE) {
-        ImGui::SliderInt("Samples per frame", (int*)&control_panel->samples_per_frame, 1, 16);
+        ImGui::SliderInt("Samples per frame", (int*)&control_panel->samples_per_frame, 1, 64);
         ImGui::SliderInt("Max bounces", (int*)&control_panel->max_bounces, 1, 16);
     }
     ImGui::End();

@@ -135,8 +135,9 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
         if (surface != VK_NULL_HANDLE) {
             VkBool32 present_support = false;
             vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &present_support);
-            if (present_support)
+            if (present_support) {
                 info.present_family_idx = i;
+            }
         }
     }
 }
@@ -291,7 +292,9 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
 
     VkPhysicalDeviceFeatures2 features2 = {};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
     features2.features = {};
+    
     create_info.pNext = &features2;
     create_info.pEnabledFeatures = nullptr;
 

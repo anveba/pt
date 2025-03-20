@@ -19,10 +19,20 @@ static const float3x3 odt_to_srgb_mat =
 };
 
 float to_srgb(float x) {
-    if (x <= 0.00031308)
-        return 12.92 * x;
-    else
-        return 1.055 * pow(x, (1.0 / 2.4) ) - 0.055;
+    return x <= 0.00031308 ? 12.92 * x : 1.055 * pow(x, (1.0 / 2.4) ) - 0.055;
+}
+
+float3 to_srgb(float3 x) {
+    return float3(to_srgb(x.x), to_srgb(x.y), to_srgb(x.z));
+}
+
+float from_srgb(float x)
+{
+    return (x <= 0.04045) ? (x / 12.92) : pow((x + 0.055) / 1.055, 2.4);
+}
+
+float3 from_srgb(float3 x) {
+    return float3(from_srgb(x.x), from_srgb(x.y), from_srgb(x.z));
 }
 
 float3 rrt_to_odt_fit(float3 v)
@@ -34,12 +44,12 @@ float3 rrt_to_odt_fit(float3 v)
 
 float3 aces(float3 col)
 {
-    col = float3(to_srgb(col.r), to_srgb(col.g), to_srgb(col.b));
+    col = to_srgb(col);
     col = mul(srgb_to_rrt_mat, col);
     col = rrt_to_odt_fit(col);
     col = mul(odt_to_srgb_mat, col);
 
-    return saturate(col);
+    return saturate(from_srgb(col));
 }
 
 [numthreads(16, 16, 1)] 

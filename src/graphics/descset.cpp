@@ -52,14 +52,14 @@ VkWriteDescriptorSet DescriptorSet::write_descriptor_set(
 
 VkWriteDescriptorSet DescriptorSet::write_descriptor_set(const VkDescriptorImageInfo& image_descriptor, uint32_t binding, VkDescriptorType type)
 {
-    VkWriteDescriptorSet result_image_write{};
-    result_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    result_image_write.dstSet = descriptor_set;
-    result_image_write.descriptorType = type;
-    result_image_write.dstBinding = binding;
-    result_image_write.pImageInfo = &image_descriptor;
-    result_image_write.descriptorCount = 1;
-    return result_image_write;
+    VkWriteDescriptorSet image_write{};
+    image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    image_write.dstSet = descriptor_set;
+    image_write.descriptorType = type;
+    image_write.dstBinding = binding;
+    image_write.pImageInfo = &image_descriptor;
+    image_write.descriptorCount = 1;
+    return image_write;
 }
 
 VkWriteDescriptorSet DescriptorSet::write_descriptor_set(

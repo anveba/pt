@@ -74,13 +74,17 @@ void PathTracer::create_shader_binding_tables()
     const uint32_t aligned_handle_size = round_up_to<uint32_t>(
         device.get_physical_device_info().ray_tracing_properties.shaderGroupHandleSize,
         device.get_physical_device_info().ray_tracing_properties.shaderGroupHandleAlignment);
+    const uint32_t aligned_group_size = round_up_to<uint32_t>(
+        aligned_handle_size,
+        device.get_physical_device_info().ray_tracing_properties.shaderGroupBaseAlignment);
     const uint32_t group_count = static_cast<uint32_t>(shader_groups.size());
     const uint32_t table_size = group_count * aligned_handle_size;
+    const uint32_t buffer_size = group_count * aligned_group_size;
 
     device.create_buffer(
         shader_group_buffer,
         shader_group_buffer_memory,
-        table_size,
+        buffer_size,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
         VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT);
@@ -92,7 +96,8 @@ void PathTracer::create_shader_binding_tables()
 
     uint8_t* buffer_map;
     vkMapMemory(device.logical_handle(), shader_group_buffer_memory, 0, table_size, 0, (void**)&buffer_map);
-    memcpy(buffer_map, shader_handle_data.data(), table_size);
+    for (size_t i = 0; i < group_count; i++)
+        memcpy(buffer_map + i * aligned_group_size, shader_handle_data.data() + i * aligned_handle_size, aligned_handle_size);
     vkUnmapMemory(device.logical_handle(), shader_group_buffer_memory);
 }
 
@@ -243,21 +248,24 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer)
     const uint32_t aligned_handle_size = round_up_to<uint32_t>(
         device.get_physical_device_info().ray_tracing_properties.shaderGroupHandleSize,
         device.get_physical_device_info().ray_tracing_properties.shaderGroupHandleAlignment);
+    const uint32_t aligned_group_size = round_up_to<uint32_t>(
+        aligned_handle_size,
+        device.get_physical_device_info().ray_tracing_properties.shaderGroupBaseAlignment);
 
     const VkDeviceSize shader_group_buffer_address = device.get_buffer_address(shader_group_buffer);
 
     VkStridedDeviceAddressRegionKHR ray_gen_sbt{};
-    ray_gen_sbt.deviceAddress = shader_group_buffer_address + aligned_handle_size * 0;
+    ray_gen_sbt.deviceAddress = shader_group_buffer_address + aligned_group_size * 0;
     ray_gen_sbt.stride = aligned_handle_size;
     ray_gen_sbt.size = aligned_handle_size;
 
     VkStridedDeviceAddressRegionKHR miss_sbt{};
-    miss_sbt.deviceAddress = shader_group_buffer_address + aligned_handle_size * 1;
+    miss_sbt.deviceAddress = shader_group_buffer_address + aligned_group_size * 1;
     miss_sbt.stride = aligned_handle_size;
     miss_sbt.size = aligned_handle_size;
 
     VkStridedDeviceAddressRegionKHR hit_sbt{};
-    hit_sbt.deviceAddress = shader_group_buffer_address + aligned_handle_size * 2;
+    hit_sbt.deviceAddress = shader_group_buffer_address + aligned_group_size * 2;
     hit_sbt.stride = aligned_handle_size;
     hit_sbt.size = aligned_handle_size;
 

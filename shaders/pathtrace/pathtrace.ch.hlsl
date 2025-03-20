@@ -92,7 +92,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     float metalness = material.metal_anisotropic.r;
 
     float3 f0 = lerp(0.05, base_colour, metalness);
-    float material_alpha = 0.5 + roughness / 2.0;
+    float material_alpha = lerp(0.1, 1.0, roughness);
     material_alpha = material_alpha * material_alpha;
 
     float3 n = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
@@ -111,7 +111,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     float3 f = fresnel_schlick(cos_d, f0);
     float g = geometry_ggx_smith(cos_ni, cos_no, material_alpha);
 
-    float3 specular = (d * f * g) / (4.0 * dot(n, i) * dot(n, o));
+    float3 specular = (d * f * g) / (4.0 * cos_ni * cos_no);
 
     float f_d90 = 0.5 + 2.0 * roughness * cos_d * cos_d;
     float3 diffuse = (1.0 - metalness) * base_colour / PI * diffuse_fresnel(f_d90, cos_ni) * diffuse_fresnel(f_d90, cos_no);

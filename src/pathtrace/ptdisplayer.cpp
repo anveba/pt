@@ -12,7 +12,7 @@ PathTraceDisplayer::PathTraceDisplayer(
     : image_semaphore(display.get_device(), false)
     , render_semaphore(display.get_device(), false)
     , render_fence(display.get_device(), true)
-    , intermediate_image(display.get_device(), command_pool, extent, VK_FORMAT_B8G8R8A8_UNORM)
+    , intermediate_image(display.get_device(), command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT)
     , display(display)
     , command_pool(command_pool)
     , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, extent)
@@ -135,7 +135,7 @@ void PathTraceDisplayer::end_render()
 void PathTraceDisplayer::get_debug_info(RenderDebugInfo& info)
 {
     info = {};
-    info.samples = path_tracer.accumulated_samples() + path_tracer.get_samples_per_render();
+    info.samples = path_tracer.accumulated_samples();
 }
 
 void PathTraceDisplayer::set_settings(const UiControlPanel& control_panel)
@@ -262,13 +262,14 @@ void PathTraceDisplayer::copy_result(VkImage image)
                             VK_PIPELINE_STAGE_TRANSFER_BIT,
                             subresource_range);
 
-    VkImageCopy copy_region{};
-    copy_region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-    copy_region.srcOffset = { 0, 0, 0 };
-    copy_region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-    copy_region.dstOffset = { 0, 0, 0 };
-    copy_region.extent = { intermediate_image.get_extent().width, intermediate_image.get_extent().height, 1 };
-    vkCmdCopyImage(command_buffer, intermediate_image.handle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+    VkImageBlit blit {};
+    blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    blit.srcOffsets[0] = { 0, 0, 0 };
+    blit.srcOffsets[1] = { 400, 400, 1 };
+    blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    blit.dstOffsets[0] = { 0, 0, 0 };
+    blit.dstOffsets[1] = { 400, 400, 1 };
+    vkCmdBlitImage(command_buffer, intermediate_image.handle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
 
     transition_image_layout(command_buffer,
                             image,
