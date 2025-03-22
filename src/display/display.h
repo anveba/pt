@@ -36,12 +36,11 @@ class Display
 
     void present(Semaphore& wait_for);
 
-    uint32_t acquire_next_index(Semaphore& image_ready);
+    uint32_t acquire_next_index(Semaphore& image_ready, bool& swap_chain_recreated);
 
     void copy_image(VkImage src, uint32_t dst_index);
 
     inline VkExtent2D get_extent() { return swap_chain.extent; }
-    void recreate_swap_chain();
 
     inline Device& get_device() { return device; }
     inline Window& get_window() { return window; }
@@ -64,6 +63,7 @@ class Display
                            VkPresentModeKHR present_mode);
 
     void destroy_swap_chain();
+    void recreate_swap_chain();
 
     NO_COPY(Display);
 };

@@ -7,7 +7,7 @@ StructuredBuffer<uint> index_buffer : register(t4);
 StructuredBuffer<InstanceData> instance_buffer : register(t5);
 StructuredBuffer<PbrMaterial> material_buffer : register(t6);
 SamplerState texture_sampler : register(s7);
-Texture2D<float4> textures[64] : register(t8);
+Texture2D<float4> textures[256] : register(t8);
 
 PbrMaterial get_material(uint i) {
     return material_buffer[i];
@@ -62,10 +62,8 @@ float3 diffuse_fresnel(float3 f0, float cos_theta) {
     return 1.0 + (f0 - 1.0) * base * base * base * base * base;
 }
 
-float3 sample_micronormal_ggx(float3 n, float alpha, uint4 rng_state) {
-    float3 up = abs(n.z) < 0.99 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-    float3 tangent = normalize(cross(up, n));
-    float3 bitangent = cross(n, tangent);
+float3 sample_micronormal_ggx(float3 n, float3 x, float3 y, float alpha, uint4 rng_state) {
+
 
     float phi = 2.0 * PI * hybrid_taus(rng_state);
     float u = hybrid_taus(rng_state);
@@ -73,7 +71,7 @@ float3 sample_micronormal_ggx(float3 n, float alpha, uint4 rng_state) {
     float sin_theta = sqrt(1.0 - cos2_theta);
     float cos_theta = sqrt(cos2_theta);
 
-    return tangent * sin_theta * cos(phi) + bitangent * sin_theta * sin(phi) + n * cos_theta;
+    return n * cos_theta + x * sin_theta * cos(phi) + y * sin_theta * sin(phi);
 }
 
 [shader("closesthit")]
@@ -93,20 +91,50 @@ void main(inout RayPayload payload, in Attributes attributes)
     float3 obj_space_normal = normalize(bary_alpha * v_a.normal + bary_beta * v_b.normal + bary_gamma * v_c.normal);
     float2 uv = bary_alpha * v_a.uv + bary_beta * v_b.uv + bary_gamma * v_c.uv;
 
-    float3 base_colour = material.base_colour.rgb;
-    if (has_texture(material.base_emission_roughness_specular_maps.x))
-        base_colour *= textures[material.base_emission_roughness_specular_maps.x].SampleLevel(texture_sampler, uv, 0).rgb;
+    float3 base_colour, emission;
+    float roughness, metalness;
+    if (has_texture(material.col_emi_rgh_spec_maps.x)) {
 
-    float roughness = material.base_colour.a;
-    float3 emission = material.emission.rgb * material.emission.a;
-    float metalness = material.metalness_anisotropy.r;
+        float4 all_channels = textures[material.col_emi_rgh_spec_maps.x].SampleLevel(texture_sampler, uv, 0);
+
+        // Check transparency
+        if (hybrid_taus(payload.rng_state) >= all_channels.a) {
+            payload.brdf = 1.0;
+            payload.emission = 0.0;
+            payload.incoming_direction = float4(WorldRayDirection(), RayTCurrent());
+            return;
+        }
+
+        base_colour = all_channels.rgb;
+    }
+    else
+        base_colour = material.base_colour.rgb;
+
+    if (has_texture(material.col_emi_rgh_spec_maps.y))
+        emission = textures[material.col_emi_rgh_spec_maps.y].SampleLevel(texture_sampler, uv, 0).rgb * material.emission.a;
+    else
+        emission = material.emission.rgb * material.emission.a;
+
+    if (has_texture(material.col_emi_rgh_spec_maps.z))
+        roughness = textures[material.col_emi_rgh_spec_maps.z].SampleLevel(texture_sampler, uv, 0).r;
+    else
+        roughness = material.base_colour.a;
+
+    if (has_texture(material.shn_clcoat_metal_norm_maps.z))
+        metalness = textures[material.shn_clcoat_metal_norm_maps.z].SampleLevel(texture_sampler, uv, 0).r;
+    else
+        metalness = material.metalness_anisotropy.r;
 
     float3 f0 = lerp(0.05, base_colour, metalness);
     float material_alpha = roughness * roughness;
     material_alpha = lerp(0.01, 1.0, material_alpha);
 
-    float3 n = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
     float3 o = normalize(-WorldRayDirection());
+    float3 n = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
+    if (dot(n, o) < 0.0)
+        n = -n;
+    float3 x = normalize(cross(abs(n.z) < 0.99 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0), n));
+    float3 y = cross(n, x);
     // float3 h = sample_micronormal_ggx(n, material_alpha, payload.rng_state);
     // float3 i = 2.0 * dot(o, h) * h - o;
     float3 i = normalize(cosine_weighted_rand_dir(payload.rng_state, n));

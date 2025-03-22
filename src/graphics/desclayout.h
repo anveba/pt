@@ -9,9 +9,11 @@ class DescriptorSetLayout
   public:
     DescriptorSetLayout(Device& device,
                         const VkDescriptorSetLayoutBinding* layout_bindings,
-                        uint32_t binding_count);
+                        uint32_t binding_count,
+                        const VkDescriptorBindingFlags* flags = nullptr);
     DescriptorSetLayout(Device& device,
-                        const std::vector<VkDescriptorSetLayoutBinding> layout_bindings);
+                        const std::vector<VkDescriptorSetLayoutBinding>& layout_bindings,
+                        const VkDescriptorBindingFlags* flags = nullptr);
     ~DescriptorSetLayout();
 
     inline const VkDescriptorSetLayout& handle() const { return layout; }

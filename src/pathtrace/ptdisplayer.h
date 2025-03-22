@@ -8,7 +8,7 @@
 #include "graphics/fence.h"
 #include "graphics/storageimage.h"
 #include "pathtrace/pathtrace.h"
-#include "postprocess/postprocess.h"
+#include "postprocess/tonemap.h"
 
 class PathTraceDisplayer : public IDisplayable
 {
@@ -50,7 +50,7 @@ class PathTraceDisplayer : public IDisplayable
     Display& display;
     CommandPool& command_pool;
     PathTracer path_tracer;
-    PostProcessing post_processor;
+    ToneMapper tone_mapper;
     VkCommandBuffer command_buffer;
 
     bool in_render;

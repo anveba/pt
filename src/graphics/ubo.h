@@ -3,15 +3,15 @@
 
 #include "device.h"
 
-template<typename T>
 class UniformBuffer
 {
   public:
-    UniformBuffer(Device& device)
+    UniformBuffer(Device& device, VkDeviceSize size)
         : device(device)
+        , size(size)
     {
-        device.create_buffer(buffer, memory, sizeof(T), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        vkMapMemory(device.logical_handle(), memory, 0, sizeof(T), 0, (void**)&map);
+        device.create_buffer(buffer, memory, size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        vkMapMemory(device.logical_handle(), memory, 0, size, 0, (void**)&map);
     }
 
     ~UniformBuffer()
@@ -23,15 +23,16 @@ class UniformBuffer
 
     inline const VkBuffer& handle() const { return buffer; }
 
-    inline T* get_map() const { return map; }
-    constexpr size_t size() const { return sizeof(T); }
+    inline void* get_map() const { return map; }
+    inline size_t get_size() const { return size; }
 
   private:
     Device& device;
+    VkDeviceSize size;
 
     VkBuffer buffer;
     VkDeviceMemory memory;
-    T* map;
+    void* map;
 
     NO_COPY(UniformBuffer);
 };

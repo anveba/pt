@@ -24,6 +24,7 @@ void SceneBuilder::set_material_scene(Scene& scene, Camera& camera)
     scene.materials.resize(count + 1);
 
     for (size_t i = 0; i < count; i++) {
+        scene.materials[i].clear();
         scene.materials[i].base_colour = Vec4(i / row_sz, 1 - i / row_sz, 0.0f, float(i % row_sz) / (row_sz - 1));
         scene.materials[i].emission = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
         scene.materials[i].metalness_anisotropy = Vec4((i / row_sz) % 2, 0.0f, 0.0f, 0.0f);
@@ -32,6 +33,7 @@ void SceneBuilder::set_material_scene(Scene& scene, Camera& camera)
         sphere.instances[i].material_index = i;
     }
 
+    scene.materials[count].clear();
     scene.materials[count].base_colour = Vec4(1.0f, 1.0f, 1.0f, 1.0f);
     scene.materials[count].emission = Vec4(1.0f, 1.0f, 1.0f, 15.0f);
     for (size_t i = count; i < count + lights; i++) {

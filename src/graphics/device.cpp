@@ -313,6 +313,7 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
 
     create_info.pNext = &features2;
     create_info.pEnabledFeatures = nullptr;
+    VkPhysicalDeviceDescriptorIndexingFeatures indexing;
 
     if (usage & DEVICE_USAGE_RAY_TRACE_BIT) {
         // Enable ray tracing features. Feature requirement test is assumed to have been passed.
@@ -320,7 +321,12 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
         physical_device_info.buffer_device_address_features.pNext = &physical_device_info.acceleration_structure_features;
         physical_device_info.acceleration_structure_features.pNext = &physical_device_info.ray_tracing_pipeline_features;
         physical_device_info.ray_tracing_pipeline_features.pNext = &physical_device_info.ray_query_features;
-        physical_device_info.ray_query_features.pNext = nullptr;
+
+        indexing = {};
+        indexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        indexing.descriptorBindingPartiallyBound = VK_TRUE;
+
+        physical_device_info.ray_query_features.pNext = &indexing;
     }
 
     if (vkCreateDevice(physical, &create_info, nullptr, &logical) != VK_SUCCESS)

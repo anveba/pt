@@ -2,6 +2,13 @@
 RWTexture2D<float4> source_image : register(u0);
 RWTexture2D<float4> result_image : register(u1);
 
+struct UniformBufferObject {
+    uint width;
+    uint height;
+};
+
+cbuffer ubo : register(b2) { UniformBufferObject ubo; };
+
 // Reference: https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
 
 static const float3x3 srgb_to_rrt_mat =
@@ -56,6 +63,10 @@ float3 aces(float3 col)
 void main(uint3 dispatch_id : SV_DispatchThreadID)
 {
     int2 coord = dispatch_id.xy;
+
+    if (coord.x >= ubo.width || coord.y >= ubo.height)
+        return;
+
     float4 input = source_image[coord];
     
     result_image[coord] = float4(aces(input.rgb), input.a);

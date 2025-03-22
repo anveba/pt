@@ -40,6 +40,7 @@ static uint32_t process_texture(
     aiString path;
     mat->GetTexture(texture_type, 0, &path);
     if (texture_index_map.count(path.C_Str()) == 0) {
+        std::cout << "Using texture: " << path.C_Str() << std::endl;
         texture_index_map[path.C_Str()] = current_texture_index;
         return current_texture_index++;
     } else {
@@ -79,18 +80,18 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
         materials[i].emission = Vec4(emission_colour.r, emission_colour.g, emission_colour.b, emission_intensity);
         materials[i].metalness_anisotropy = Vec4(metalness, 0.0f, 0.0f, 0.0f);
 
-        materials[i].base_emission_roughness_specular_maps = Uint4(
+        materials[i].col_emi_rgh_spec_maps = Uint4(
             process_texture(mat, aiTextureType_BASE_COLOR, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_EMISSION_COLOR, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_SPECULAR, texture_index_map, current_texture_index));
-        if (materials[i].base_emission_roughness_specular_maps.x == UINT32_MAX)
-            materials[i].base_emission_roughness_specular_maps.x = process_texture(mat, aiTextureType_DIFFUSE, texture_index_map, current_texture_index);
-        if (materials[i].base_emission_roughness_specular_maps.y == UINT32_MAX)
-            materials[i].base_emission_roughness_specular_maps.y = process_texture(mat, aiTextureType_EMISSIVE, texture_index_map, current_texture_index);
-        includes_emission_data = includes_emission_data || (materials[i].base_emission_roughness_specular_maps.y != UINT32_MAX);
+        if (materials[i].col_emi_rgh_spec_maps.x == UINT32_MAX)
+            materials[i].col_emi_rgh_spec_maps.x = process_texture(mat, aiTextureType_DIFFUSE, texture_index_map, current_texture_index);
+        if (materials[i].col_emi_rgh_spec_maps.y == UINT32_MAX)
+            materials[i].col_emi_rgh_spec_maps.y = process_texture(mat, aiTextureType_EMISSIVE, texture_index_map, current_texture_index);
+        includes_emission_data = includes_emission_data || (materials[i].col_emi_rgh_spec_maps.y != UINT32_MAX);
 
-        materials[i].sheen_clearcoat_metalness_normal_maps = Uint4(
+        materials[i].shn_clcoat_metal_norm_maps = Uint4(
             process_texture(mat, aiTextureType_SHEEN, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_CLEARCOAT, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_METALNESS, texture_index_map, current_texture_index),
@@ -188,6 +189,7 @@ void Scene::from_file(const std::string& path, Camera& camera)
     const aiScene* scene = importer.ReadFile(
         path,
         aiProcess_Triangulate |
+            aiProcess_FlipUVs |
             aiProcess_GenNormals |
             aiProcess_JoinIdenticalVertices); // TODO: take a look at post processing steps
 

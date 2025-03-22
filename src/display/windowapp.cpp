@@ -18,7 +18,7 @@ static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
     extra = PathTracer::get_descriptor_pool_sizes();
     pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
 
-    extra = PostProcessing::get_descriptor_pool_sizes();
+    extra = PostProcessor::get_descriptor_pool_sizes();
     pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
 
     return pool_sizes;
@@ -59,6 +59,7 @@ static void render_loop(IDisplayable** displayers, Camera& camera, Display& disp
     WindowEventInfo window_event_info = {};
 
     auto last_frame = std::chrono::high_resolution_clock::now();
+    uint32_t width = display.get_extent().width, height = display.get_extent().height;
 
     while (true) {
         auto this_frame = std::chrono::high_resolution_clock::now();
@@ -81,10 +82,10 @@ static void render_loop(IDisplayable** displayers, Camera& camera, Display& disp
             update_camera = true;
         }
 
-        if (window_event_info.resize) {
-            display.recreate_swap_chain();
-            current_displayer->set_extent(display.get_extent().width, display.get_extent().height);
-            camera.aspect_ratio = float(display.get_extent().width) / display.get_extent().height;
+        if (width != display.get_extent().width || height != display.get_extent().height) {
+            width = display.get_extent().width; 
+            height = display.get_extent().height;
+            camera.aspect_ratio = float(width) / height;
             update_camera = true;
         }
 

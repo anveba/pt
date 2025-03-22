@@ -20,22 +20,26 @@ static VkFormat get_image_format_from_channel_count(int channels)
     }
 }
 
+static std::string full_path(const std::string& base_directory, const std::string path) {
+    std::string result = base_directory + "/" + path;
+    std::replace(result.begin(), result.end(), '\\', '/');
+    return result;
+}
+
 static void create_texture_images(
     Device& device,
     const std::string& base_directory,
     const std::vector<std::string>& texture_paths,
     std::vector<Texture>& textures,
     size_t& size,
-    size_t& max_size,
     uint32_t& memory_type_bits)
 {
     textures.resize(texture_paths.size());
     size = 0;
-    max_size = 0;
     memory_type_bits = UINT32_MAX;
     int width, height, channels;
     for (size_t i = 0; i < texture_paths.size(); i++) {
-        std::string path = base_directory + "/" + texture_paths[i];
+        std::string path = full_path(base_directory, texture_paths[i]);
         if (!stbi_info(path.c_str(), &width, &height, &channels))
             throw std::runtime_error("Failed to read image info at " + path);
 
@@ -45,12 +49,11 @@ static void create_texture_images(
         vkGetImageMemoryRequirements(device.logical_handle(), textures[i].image, &textures[i].memory_requirements);
 
         memory_type_bits &= textures[i].memory_requirements.memoryTypeBits;
-        size += round_up_to(size, textures[i].memory_requirements.alignment) + textures[i].memory_requirements.size;
-        max_size = std::max(max_size, textures[i].memory_requirements.size);
+        size = round_up_to(size + textures[i].memory_requirements.size, textures[i].memory_requirements.alignment);
     }
 }
 
-static void copy_buffer_to_image(VkCommandBuffer command_buffer, VkBuffer src, VkImage dst, VkExtent2D extent, VkImageLayout layout)
+static void copy_buffer_to_image(VkCommandBuffer command_buffer, VkBuffer src, VkImage dst, VkExtent2D extent, VkImageLayout layout, VkDeviceSize buffer_offset)
 {
     VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
@@ -65,7 +68,7 @@ static void copy_buffer_to_image(VkCommandBuffer command_buffer, VkBuffer src, V
                             subresource_range);
 
     VkBufferImageCopy region{};
-    region.bufferOffset = 0;
+    region.bufferOffset = buffer_offset;
     region.bufferRowLength = 0;
     region.bufferImageHeight = 0;
     region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
@@ -89,43 +92,48 @@ static void load_texture_data(
     Device& device,
     CommandPool& command_pool,
     VkDeviceMemory memory,
-    VkDeviceSize staging_buffer_size,
+    VkDeviceSize memory_size,
     const std::string& base_directory,
     const std::vector<std::string>& texture_paths,
     std::vector<Texture>& textures)
 {
     VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
 
+    // TODO: perhaps it is possible to reduce the size of the staging buffer by not having all textures
+    // in it at once. For large scenes, there may be problems due to having to fit two copies
+    // of the texture data in memory.
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     device.create_buffer(staging_buffer,
                          staging_buffer_memory,
-                         staging_buffer_size,
+                         memory_size,
                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    void* mapped;
-    vkMapMemory(device.logical_handle(), staging_buffer_memory, 0, staging_buffer_size, 0, &mapped);
+    uint8_t* mapped;
+    vkMapMemory(device.logical_handle(), staging_buffer_memory, 0, memory_size, 0, (void**)&mapped);
 
     size_t offset = 0;
     int width, height, channels;
     for (size_t i = 0; i < texture_paths.size(); i++) {
         vkBindImageMemory(device.logical_handle(), textures[i].image, memory, offset);
         textures[i].view = device.create_image_view(textures[i].image, textures[i].format, VK_IMAGE_ASPECT_COLOR_BIT);
-
-        std::string path = base_directory + "/" + texture_paths[i];
+        
+        std::string path = full_path(base_directory, texture_paths[i]);
         unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 4); // TODO deal with images with fewer channels
         if (data == NULL)
             throw std::runtime_error("Failed to load image at " + path);
 
-        assert(static_cast<VkDeviceSize>(width) * height * 4 == textures[i].memory_requirements.size);
-        memcpy(mapped, data, textures[i].memory_requirements.size);
+        size_t data_size = static_cast<size_t>(width) * height * 4;
+        assert(data_size <= textures[i].memory_requirements.size);
+        assert(offset + data_size <= memory_size);
+        memcpy(mapped + offset, data, data_size);
         stbi_image_free(data);
 
         VkExtent2D extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
-        copy_buffer_to_image(command_buffer, staging_buffer, textures[i].image, extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        copy_buffer_to_image(command_buffer, staging_buffer, textures[i].image, extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, offset);
 
-        offset = round_up_to(offset, textures[i].memory_requirements.alignment) + textures[i].memory_requirements.size;
+        offset = round_up_to(offset + textures[i].memory_requirements.size, textures[i].memory_requirements.alignment);
     }
 
     command_pool.end_one_time_use_command_buffer(command_buffer, device.get_graphics_queue());
@@ -157,14 +165,13 @@ void SceneTextures::build(CommandPool& command_pool, const Scene& scene)
 {
     if (!scene.get_texture_paths().empty()) {
 
-        size_t size, max_size;
+        size_t size;
         uint32_t memory_type_flags;
         create_texture_images(device,
                               scene.get_resource_directory(),
                               scene.get_texture_paths(),
                               textures,
                               size,
-                              max_size,
                               memory_type_flags);
 
         if (memory_type_flags == 0)
@@ -175,7 +182,7 @@ void SceneTextures::build(CommandPool& command_pool, const Scene& scene)
         load_texture_data(device,
                           command_pool,
                           memory,
-                          max_size,
+                          size,
                           scene.get_resource_directory(),
                           scene.get_texture_paths(),
                           textures);

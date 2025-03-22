@@ -24,7 +24,7 @@ Rasteriser::Rasteriser(
     VkFormat depth_format)
     : device(device)
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT))
-    , uniform_buffer(device)
+    , uniform_buffer(device, sizeof(RasteriseUniformData))
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings())
     , descriptor_set(descriptor_pool, descriptor_set_layout)
     , depth_format(depth_format)
@@ -251,10 +251,15 @@ void Rasteriser::create_pipeline()
 
 void Rasteriser::update_descriptor_set()
 {
-    VkDescriptorBufferInfo buffer_info = DescriptorSet::create_descriptor(uniform_buffer.handle(), uniform_buffer.size());
+    VkDescriptorBufferInfo buffer_info = DescriptorSet::create_descriptor(uniform_buffer.handle(), sizeof(RasteriseUniformData));
     VkWriteDescriptorSet descriptor_write = descriptor_set.write_descriptor_set(&buffer_info, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     DescriptorSet::update_write_descriptors(device, &descriptor_write, 1);
+}
+
+void Rasteriser::update_uniforms()
+{
+    memcpy(uniform_buffer.get_map(), &uniform_data, sizeof(RasteriseUniformData));
 }
 
 void Rasteriser::write_command_buffer(VkCommandBuffer command_buffer, VkFramebuffer framebuffer)
@@ -327,7 +332,7 @@ void Rasteriser::set_camera(CommandPool& command_pool, const Camera& camera)
     Mat4 view = camera.view_matrix();
     Mat4 proj = camera.projection_matrix();
 
-    uniform_buffer.get_map()->mvp = proj * view;
-    uniform_buffer.get_map()->view_pos = camera.position;
-    uniform_buffer.get_map()->inv_light_dir_norm = glm::normalize(-light_dir);
+    uniform_data.mvp = proj * view;
+    uniform_data.view_pos = camera.position;
+    uniform_data.inv_light_dir_norm = glm::normalize(-light_dir);
 }

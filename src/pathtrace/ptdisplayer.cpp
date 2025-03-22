@@ -16,7 +16,7 @@ PathTraceDisplayer::PathTraceDisplayer(
     , display(display)
     , command_pool(command_pool)
     , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, extent)
-    , post_processor(display.get_device(), descriptor_pool, command_pool, extent, path_tracer.get_accumulation_image().get_view(), intermediate_image.get_view())
+    , tone_mapper(display.get_device(), descriptor_pool, command_pool, extent, path_tracer.get_accumulation_image().get_view(), intermediate_image.get_view())
     , in_render(false)
 {
     create_render_pass();
@@ -34,10 +34,11 @@ PathTraceDisplayer::~PathTraceDisplayer()
 void PathTraceDisplayer::set_extent(uint32_t width, uint32_t height)
 {
     path_tracer.set_extent(command_pool, width, height);
-    intermediate_image.rebuild(command_pool, path_tracer.get_accumulation_image().get_extent(), intermediate_image.get_format());
-    post_processor.set_source_image(path_tracer.get_accumulation_image().get_view());
-    post_processor.set_result_image(intermediate_image.get_view());
-    post_processor.set_extent(path_tracer.get_accumulation_image().get_extent());
+    VkExtent2D image_extent = path_tracer.get_accumulation_image().get_extent();
+    intermediate_image.rebuild(command_pool, image_extent, intermediate_image.get_format());
+    tone_mapper.set_source_image(path_tracer.get_accumulation_image().get_view());
+    tone_mapper.set_result_image(intermediate_image.get_view());
+    tone_mapper.set_extent(image_extent);
 
     destroy_framebuffers();
     create_framebuffers();
@@ -60,14 +61,17 @@ void PathTraceDisplayer::wait_idle()
 
 void PathTraceDisplayer::begin_render()
 {
-    render_fence.wait();
-
     if (in_render)
         throw std::runtime_error("Ray tracer is already rendering.");
 
+    render_fence.wait();
+
     path_tracer.update_uniforms();
 
-    uint32_t index = display.acquire_next_index(image_semaphore);
+    bool swap_chain_recreated;
+    uint32_t index = display.acquire_next_index(image_semaphore, swap_chain_recreated);
+    if (swap_chain_recreated)
+        set_extent(display.get_extent().width, display.get_extent().height);
 
     vkResetCommandBuffer(command_buffer, 0);
 
@@ -82,7 +86,7 @@ void PathTraceDisplayer::begin_render()
     // TODO avoid writing each frame (implement together with frames in flight)
     path_tracer.write_command_buffer(command_buffer);
 
-    post_processor.write_command_buffer(command_buffer);
+    tone_mapper.write_command_buffer(command_buffer);
 
     blit_result(display.get_swap_chain().images[index], display.get_swap_chain().extent.width, display.get_swap_chain().extent.height);
 

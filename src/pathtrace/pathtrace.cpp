@@ -2,16 +2,20 @@
 
 #include <cassert>
 
+constexpr uint32_t MAX_TEXTURE_COUNT = 256; 
+
 std::vector<VkDescriptorPoolSize> PathTracer::get_descriptor_pool_sizes()
 {
     return { { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },
              { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
              { VK_DESCRIPTOR_TYPE_SAMPLER, 1 },
-             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 64 },
+             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, MAX_TEXTURE_COUNT },
              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 } };
 }
 
-static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings(const VkSampler sampler)
+constexpr size_t DESCRIPTOR_BINDING_COUNT = 9;
+
+static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings(const VkSampler& sampler)
 {
     // TODO VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR depends on whether it is recursive
     VkDescriptorSetLayoutBinding acceleration_structure_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
@@ -22,9 +26,9 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
     VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding material_binding = DescriptorSetLayout::create_layout_binding(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding texture_sampler_binding = DescriptorSetLayout::create_layout_binding(7, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 1, &sampler);
-    VkDescriptorSetLayoutBinding texture_binding = DescriptorSetLayout::create_layout_binding(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 64);
+    VkDescriptorSetLayoutBinding texture_binding = DescriptorSetLayout::create_layout_binding(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, MAX_TEXTURE_COUNT);
 
-    return {
+    std::vector<VkDescriptorSetLayoutBinding> bindings = {
         acceleration_structure_layout_binding,
         result_image_layout_binding,
         uniform_buffer_binding,
@@ -35,9 +39,19 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
         texture_sampler_binding,
         texture_binding
     };
+    assert(bindings.size() == DESCRIPTOR_BINDING_COUNT);
+    return bindings;
 }
 
-constexpr VkBufferUsageFlagBits scene_buffer_usage = VkBufferUsageFlagBits();
+static std::vector<VkDescriptorBindingFlags> get_descriptor_binding_flags()
+{
+    std::vector<VkDescriptorBindingFlags> flags;
+    flags.resize(DESCRIPTOR_BINDING_COUNT);
+    for (uint32_t i = 0; i < DESCRIPTOR_BINDING_COUNT; i++)
+        flags[i] = 0;
+    flags[8] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+    return flags;
+}
 
 PathTracer::PathTracer(
     Device& device,
@@ -49,10 +63,10 @@ PathTracer::PathTracer(
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR), VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
     , scene_textures(device, command_pool, scene, 0)
     , acceleration_structure(device, command_pool, scene, scene_buffer)
-    , uniform_buffer(device)
+    , uniform_buffer(device, sizeof(PathTraceUniformData))
     , accumulation_image(device, command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT)
     , texture_sampler(device)
-    , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()))
+    , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()), get_descriptor_binding_flags().data())
     , descriptor_set(descriptor_pool, descriptor_set_layout)
     , samples_taken(0)
 {
@@ -62,7 +76,7 @@ PathTracer::PathTracer(
     create_pipeline();
     create_shader_binding_tables();
 
-    set_scene(command_pool, scene);
+    update_descriptor_sets();
 
     set_samples(1);
     set_max_bounces(1);
@@ -189,7 +203,7 @@ void PathTracer::create_pipeline()
 void PathTracer::update_descriptor_sets()
 {
     VkDescriptorImageInfo accumulation_image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
-    VkDescriptorBufferInfo ubo_descriptor = DescriptorSet::create_descriptor(uniform_buffer.handle(), uniform_buffer.size());
+    VkDescriptorBufferInfo ubo_descriptor = DescriptorSet::create_descriptor(uniform_buffer.handle(), sizeof(PathTraceUniformData));
     VkDescriptorBufferInfo vertex_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.vertex_region_size(), scene_buffer.get_vertex_offset());
     VkDescriptorBufferInfo index_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.index_region_size(), scene_buffer.get_index_offset());
     VkDescriptorBufferInfo object_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.instance_region_size(), scene_buffer.get_instance_offset());
@@ -216,6 +230,10 @@ void PathTracer::update_descriptor_sets()
 
     std::vector<VkDescriptorImageInfo> texture_descriptors;
     if (!scene_textures.get_textures().empty()) {
+
+        if (scene_textures.get_textures().size() > MAX_TEXTURE_COUNT)
+            throw std::runtime_error("Number of textures were more than the maximum number of " + MAX_TEXTURE_COUNT);
+            
         texture_descriptors.resize(scene_textures.get_textures().size());
 
         for (size_t i = 0; i < scene_textures.get_textures().size(); i++)
@@ -243,10 +261,10 @@ void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
     Mat4 view = camera.view_matrix();
     Mat4 proj = camera.projection_matrix();
 
-    uniform_buffer.get_map()->inv_proj = glm::inverse(proj);
-    uniform_buffer.get_map()->inv_view = glm::inverse(view);
-    uniform_buffer.get_map()->near = camera.near;
-    uniform_buffer.get_map()->far = camera.far;
+    uniform_data.inv_proj = glm::inverse(proj);
+    uniform_data.inv_view = glm::inverse(view);
+    uniform_data.near = camera.near;
+    uniform_data.far = camera.far;
 
     samples_taken = 0;
 }
@@ -255,13 +273,14 @@ void PathTracer::set_samples(uint32_t samples)
 {
     if (samples == 0)
         throw std::runtime_error("Sample count was zero.");
-    uniform_buffer.get_map()->samples = samples;
+
+    uniform_data.samples = samples;
 }
 
 void PathTracer::set_max_bounces(uint32_t max_bounces)
 {
     samples_taken = 0;
-    uniform_buffer.get_map()->max_bounces = max_bounces;
+    uniform_data.max_bounces = max_bounces;
 }
 
 void PathTracer::write_command_buffer(VkCommandBuffer command_buffer)
@@ -317,8 +336,10 @@ void PathTracer::set_extent(CommandPool& command_pool, uint32_t width, uint32_t 
 
 void PathTracer::update_uniforms()
 {
-    uniform_buffer.get_map()->new_samples_mult = (float)uniform_buffer.get_map()->samples / (samples_taken + uniform_buffer.get_map()->samples);
-    uniform_buffer.get_map()->old_samples_mult = (float)samples_taken / (samples_taken + uniform_buffer.get_map()->samples);
-    uniform_buffer.get_map()->seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
-    samples_taken += uniform_buffer.get_map()->samples;
+    uniform_data.new_samples_mult = (float)uniform_data.samples / (samples_taken + uniform_data.samples);
+    uniform_data.old_samples_mult = (float)samples_taken / (samples_taken + uniform_data.samples);
+    uniform_data.seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
+    samples_taken += uniform_data.samples;
+
+    memcpy(uniform_buffer.get_map(), &uniform_data, sizeof(PathTraceUniformData));
 }

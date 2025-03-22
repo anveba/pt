@@ -63,7 +63,12 @@ void RasteriseDisplayer::begin_render()
 
     render_fence.wait();
 
-    VkFramebuffer framebuffer = framebuffers[display.acquire_next_index(image_semaphore)];
+    rasteriser.update_uniforms();
+
+    bool swap_chain_recreated;
+    uint32_t index = display.acquire_next_index(image_semaphore, swap_chain_recreated);
+    if (swap_chain_recreated)
+        set_extent(display.get_extent().width, display.get_extent().height);
 
     vkResetCommandBuffer(command_buffer, 0);
 
@@ -75,7 +80,7 @@ void RasteriseDisplayer::begin_render()
     if (vkBeginCommandBuffer(command_buffer, &cmd_buffer_begin_info) != VK_SUCCESS)
         throw std::runtime_error("Failed to begin command buffer.");
 
-    rasteriser.write_command_buffer(command_buffer, framebuffer); // TODO do not write once per frame
+    rasteriser.write_command_buffer(command_buffer, framebuffers[index]); // TODO do not write once per frame
 
     in_render = true;
 }

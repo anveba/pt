@@ -40,7 +40,7 @@ void main()
         // Check if initial ray hit. If so, we continue tracing rays.
         if (!isinf(payload.incoming_direction.w)) {
 
-            ray_desc.TMin = 0.001;
+            ray_desc.TMin = 0.001; // TODO set ray origin as an offset of the geometry normal
             ray_desc.TMax = 10000.0;
 
             uint i;

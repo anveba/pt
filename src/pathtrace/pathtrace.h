@@ -38,8 +38,8 @@ class PathTracer
 
     static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes();
 
-    uint32_t get_samples_per_render() { return uniform_buffer.get_map()->samples; }
-    uint32_t get_max_bounces() { return uniform_buffer.get_map()->max_bounces; }
+    uint32_t get_samples_per_render() { return uniform_data.samples; }
+    uint32_t get_max_bounces() { return uniform_data.max_bounces; }
     uint32_t accumulated_samples() { return samples_taken; }
     const StorageImage& get_accumulation_image() { return accumulation_image; }
 
@@ -58,10 +58,10 @@ class PathTracer
     SceneBuffer<PathTraceInstanceData> scene_buffer;
     SceneTextures scene_textures;
     AccelerationStructure acceleration_structure;
-    UniformBuffer<PathTraceUniformData> uniform_buffer;
 
+    PathTraceUniformData uniform_data;
+    UniformBuffer uniform_buffer;
     StorageImage accumulation_image;
-
     Sampler texture_sampler;
 
     VkPipelineLayout pipeline_layout;

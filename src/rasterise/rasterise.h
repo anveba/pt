@@ -35,7 +35,9 @@ class Rasteriser
     VkExtent2D extent;
 
     SceneBuffer<RasteriseInstanceData> scene_buffer;
-    UniformBuffer<RasteriseUniformData> uniform_buffer;
+
+    RasteriseUniformData uniform_data;
+    UniformBuffer uniform_buffer;
 
     VkRenderPass render_pass;
 
@@ -55,6 +57,7 @@ class Rasteriser
     void create_render_pass(VkFormat image_format, VkFormat depth_format);
     void create_pipeline();
     void update_descriptor_set();
+    void update_uniforms();
     void write_command_buffer(VkCommandBuffer command_buffer, VkFramebuffer framebuffer);
 
     friend class RasteriseDisplayer;

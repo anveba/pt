@@ -129,10 +129,17 @@ void Display::create_swap_chain(Device& device,
         swap_chain.image_views[i] = device.create_image_view(swap_chain.images[i], swap_chain.image_format, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-uint32_t Display::acquire_next_index(Semaphore& image_ready)
+uint32_t Display::acquire_next_index(Semaphore& image_ready, bool& swap_chain_recreated)
 {
+    swap_chain_recreated = false;
     VkResult result = vkAcquireNextImageKHR(device.logical_handle(), swap_chain.handle, UINT64_MAX, image_ready.handle(), VK_NULL_HANDLE, &current_image_index);
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) //TODO fix resize (VK_ERROR_OUT_OF_DATE_KHR), presumably due to window resize race conditions
+    while (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreate_swap_chain();
+        swap_chain_recreated = true;
+        result = vkAcquireNextImageKHR(device.logical_handle(), swap_chain.handle, UINT64_MAX, image_ready.handle(), VK_NULL_HANDLE, &current_image_index);
+    }
+
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) 
         throw std::runtime_error("Failed to acquire swap chain image.");
 
     return current_image_index;

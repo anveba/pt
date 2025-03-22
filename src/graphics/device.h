@@ -65,6 +65,7 @@ class Device
     inline const VkQueue& get_graphics_queue() const { return graphics_queue; }
     inline const VkQueue& get_present_queue() const { return present_queue; }
     inline const VkQueue& get_compute_queue() const { return compute_queue; }
+    inline const VkQueue& get_transfer_queue() const { return transfer_queue; }
 
     inline VulkanContext& get_context() const { return context; }
 
