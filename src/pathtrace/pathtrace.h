@@ -4,12 +4,14 @@
 #include "accstruct.h"
 #include "graphics/cmdpool.h"
 #include "graphics/descset.h"
+#include "graphics/sampler.h"
 #include "graphics/shader.h"
 #include "graphics/storageimage.h"
 #include "graphics/ubo.h"
 #include "rng.h"
 #include "scene/scene.h"
 #include "scene/scenebuffer.h"
+#include "scene/scenetex.h"
 
 struct PathTraceUniformData
 {
@@ -54,10 +56,13 @@ class PathTracer
     Device& device;
 
     SceneBuffer<PathTraceInstanceData> scene_buffer;
+    SceneTextures scene_textures;
     AccelerationStructure acceleration_structure;
     UniformBuffer<PathTraceUniformData> uniform_buffer;
 
     StorageImage accumulation_image;
+
+    Sampler texture_sampler;
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;

@@ -25,7 +25,6 @@ static void create_acceleration_structure(
     std::vector<VkAccelerationStructureBuildGeometryInfoKHR> build_geometry_infos;
     build_geometry_infos.resize(count);
     VkDeviceSize acc_struct_offset = 0, scratch_buffer_offset = 0;
-
     for (size_t i = 0; i < count; i++) {
 
         VkAccelerationStructureCreateInfoKHR acceleration_structure_create_info{};
@@ -48,7 +47,9 @@ static void create_acceleration_structure(
         build_geometry.scratchData.deviceAddress = scratch_buffer_address + scratch_buffer_offset;
 
         acc_struct_offset += round_up_to<VkDeviceSize>(size_infos[i].accelerationStructureSize, 256);
-        scratch_buffer_offset += size_infos[i].buildScratchSize;
+        scratch_buffer_offset += round_up_to<VkDeviceSize>(
+            size_infos[i].buildScratchSize,
+            device.get_physical_device_info().acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment);
     }
 
     VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
@@ -65,11 +66,9 @@ static void create_acceleration_structure(
     vkDestroyBuffer(device.logical_handle(), scratch_buffer, nullptr);
 }
 
-void AccelerationStructure::create_blas(CommandPool& command_pool)
+void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer)
 {
-    assert(scene_buffer != nullptr);
-
-    const size_t blas_count = scene_buffer->get_scene().get_object_variants().size();
+    const size_t blas_count = scene.get_object_variants().size();
 
     std::vector<VkAccelerationStructureGeometryKHR> geometries;
     std::vector<VkAccelerationStructureBuildRangeInfoKHR> range_infos;
@@ -80,21 +79,20 @@ void AccelerationStructure::create_blas(CommandPool& command_pool)
     size_infos.resize(blas_count);
     range_info_ptrs.resize(blas_count);
 
-    VkDeviceSize total_blas_size = 0;
-    VkDeviceSize total_scratch_size = 0;
+    VkDeviceSize total_blas_size = 0, total_scratch_size = 0;
 
-    VkDeviceAddress scene_buffer_address = device.get_buffer_address(scene_buffer->handle());
+    VkDeviceAddress scene_buffer_address = device.get_buffer_address(scene_buffer.handle());
 
     for (size_t i = 0; i < blas_count; i++) {
 
-        const ObjectVariant& object = scene_buffer->get_scene().get_object_variants()[i];
-        const BufferIndices& start_indices = scene_buffer->get_start_indices(i);
+        const ObjectVariant& object = scene.get_object_variants()[i];
+        const BufferIndices& start_indices = scene_buffer.get_start_indices(i);
 
         VkDeviceOrHostAddressConstKHR vertex_address_const{
-            .deviceAddress = scene_buffer_address + scene_buffer->get_vertex_offset() + start_indices.vertex * sizeof(Vertex)
+            .deviceAddress = scene_buffer_address + scene_buffer.get_vertex_offset() + start_indices.vertex * sizeof(Vertex)
         };
         VkDeviceOrHostAddressConstKHR index_address_const{
-            .deviceAddress = scene_buffer_address + scene_buffer->get_index_offset() + start_indices.index * sizeof(uint32_t)
+            .deviceAddress = scene_buffer_address + scene_buffer.get_index_offset() + start_indices.index * sizeof(uint32_t)
         };
 
         VkAccelerationStructureGeometryKHR& geometry = geometries[i];
@@ -139,7 +137,9 @@ void AccelerationStructure::create_blas(CommandPool& command_pool)
             &size);
 
         total_blas_size += round_up_to<VkDeviceSize>(size.accelerationStructureSize, 256);
-        total_scratch_size += size.buildScratchSize;
+        total_scratch_size += round_up_to<VkDeviceSize>(
+            size.buildScratchSize,
+            device.get_physical_device_info().acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment);
     }
 
     device.create_buffer(blas_buffer,
@@ -183,26 +183,25 @@ static VkTransformMatrixKHR to_vk_transform_matrix(const Mat4& mat)
     return vkTransformMatrix;
 }
 
-void AccelerationStructure::create_tlas(CommandPool& command_pool)
+void AccelerationStructure::create_tlas(CommandPool& command_pool, const Scene& scene)
 {
-    assert(scene_buffer != nullptr);
-    assert(blas.size() == scene_buffer->get_scene().get_object_variants().size());
+    assert(blas.size() == scene.get_object_variants().size());
 
     size_t total_instance_count = 0;
-    for (const ObjectVariant& object_variant : scene_buffer->get_scene().get_object_variants())
+    for (const ObjectVariant& object_variant : scene.get_object_variants())
         total_instance_count += object_variant.instances.size();
 
     VkAccelerationStructureInstanceKHR* instances = new VkAccelerationStructureInstanceKHR[total_instance_count];
 
     uint32_t instance_index = 0;
 
-    for (size_t i = 0; i < scene_buffer->get_scene().get_object_variants().size(); i++) {
+    for (size_t i = 0; i < scene.get_object_variants().size(); i++) {
         VkAccelerationStructureDeviceAddressInfoKHR acceleration_device_address_info{};
         acceleration_device_address_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         acceleration_device_address_info.accelerationStructure = blas[i];
         VkDeviceAddress blas_address = vkGetAccelerationStructureDeviceAddressKHR(device.logical_handle(), &acceleration_device_address_info);
 
-        const ObjectVariant& object_variant = scene_buffer->get_scene().get_object_variants()[i];
+        const ObjectVariant& object_variant = scene.get_object_variants()[i];
 
         for (size_t j = 0; j < object_variant.instances.size(); j++) {
             VkAccelerationStructureInstanceKHR& instance = instances[instance_index];
@@ -285,12 +284,14 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool)
     vkDestroyBuffer(device.logical_handle(), instance_buffer, nullptr);
 }
 
-AccelerationStructure::AccelerationStructure(Device& device, CommandPool& command_pool, const SceneBuffer<PathTraceInstanceData>& scene_buffer)
+AccelerationStructure::AccelerationStructure(Device& device,
+                                             CommandPool& command_pool,
+                                             const Scene& scene,
+                                             const SceneBuffer<PathTraceInstanceData>& scene_buffer)
     : device(device)
-    , scene_buffer(&scene_buffer)
 {
-    create_blas(command_pool);
-    create_tlas(command_pool);
+    create_blas(command_pool, scene, scene_buffer);
+    create_tlas(command_pool, scene);
 }
 
 AccelerationStructure::~AccelerationStructure()
@@ -309,10 +310,9 @@ void AccelerationStructure::free()
         vkDestroyAccelerationStructureKHR(device.logical_handle(), b, nullptr);
 }
 
-void AccelerationStructure::rebuild(CommandPool& command_pool, const SceneBuffer<PathTraceInstanceData>& scene_buffer)
+void AccelerationStructure::rebuild(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer)
 {
     free();
-    this->scene_buffer = &scene_buffer;
-    create_blas(command_pool);
-    create_tlas(command_pool);
+    create_blas(command_pool, scene, scene_buffer);
+    create_tlas(command_pool, scene);
 }

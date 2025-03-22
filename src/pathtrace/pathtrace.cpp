@@ -6,10 +6,12 @@ std::vector<VkDescriptorPoolSize> PathTracer::get_descriptor_pool_sizes()
 {
     return { { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },
              { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
+             { VK_DESCRIPTOR_TYPE_SAMPLER, 1 },
+             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 64 },
              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 } };
 }
 
-static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings()
+static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings(const VkSampler sampler)
 {
     // TODO VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR depends on whether it is recursive
     VkDescriptorSetLayoutBinding acceleration_structure_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
@@ -19,6 +21,8 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
     VkDescriptorSetLayoutBinding index_binding = DescriptorSetLayout::create_layout_binding(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding material_binding = DescriptorSetLayout::create_layout_binding(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding texture_sampler_binding = DescriptorSetLayout::create_layout_binding(7, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 1, &sampler);
+    VkDescriptorSetLayoutBinding texture_binding = DescriptorSetLayout::create_layout_binding(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 64);
 
     return {
         acceleration_structure_layout_binding,
@@ -27,7 +31,9 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
         vertex_binding,
         index_binding,
         object_binding,
-        material_binding
+        material_binding,
+        texture_sampler_binding,
+        texture_binding
     };
 }
 
@@ -41,10 +47,12 @@ PathTracer::PathTracer(
     VkExtent2D extent)
     : device(device)
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR), VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
-    , acceleration_structure(device, command_pool, scene_buffer)
+    , scene_textures(device, command_pool, scene, 0)
+    , acceleration_structure(device, command_pool, scene, scene_buffer)
     , uniform_buffer(device)
     , accumulation_image(device, command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT)
-    , descriptor_set_layout(device, get_descriptor_set_layout_bindings())
+    , texture_sampler(device)
+    , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()))
     , descriptor_set(descriptor_pool, descriptor_set_layout)
     , samples_taken(0)
 {
@@ -180,7 +188,7 @@ void PathTracer::create_pipeline()
 
 void PathTracer::update_descriptor_sets()
 {
-    VkDescriptorImageInfo dest_image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
+    VkDescriptorImageInfo accumulation_image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
     VkDescriptorBufferInfo ubo_descriptor = DescriptorSet::create_descriptor(uniform_buffer.handle(), uniform_buffer.size());
     VkDescriptorBufferInfo vertex_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.vertex_region_size(), scene_buffer.get_vertex_offset());
     VkDescriptorBufferInfo index_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.index_region_size(), scene_buffer.get_index_offset());
@@ -189,22 +197,34 @@ void PathTracer::update_descriptor_sets()
 
     VkWriteDescriptorSetAccelerationStructureKHR descriptor_set_acceleration_structure_info;
     VkWriteDescriptorSet acceleration_structure_write = descriptor_set.write_descriptor_set(acceleration_structure.get_top_level(), descriptor_set_acceleration_structure_info, 0);
-    VkWriteDescriptorSet result_image_write = descriptor_set.write_descriptor_set(dest_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    VkWriteDescriptorSet uniform_buffer_write = descriptor_set.write_descriptor_set(ubo_descriptor, 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    VkWriteDescriptorSet vertex_buffer_write = descriptor_set.write_descriptor_set(vertex_descriptor, 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    VkWriteDescriptorSet index_buffer_write = descriptor_set.write_descriptor_set(index_descriptor, 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    VkWriteDescriptorSet object_buffer_write = descriptor_set.write_descriptor_set(object_descriptor, 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    VkWriteDescriptorSet material_buffer_write = descriptor_set.write_descriptor_set(material_descriptor, 6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    VkWriteDescriptorSet accumulation_image_write = descriptor_set.write_descriptor_set(&accumulation_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    VkWriteDescriptorSet uniform_buffer_write = descriptor_set.write_descriptor_set(&ubo_descriptor, 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    VkWriteDescriptorSet vertex_buffer_write = descriptor_set.write_descriptor_set(&vertex_descriptor, 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    VkWriteDescriptorSet index_buffer_write = descriptor_set.write_descriptor_set(&index_descriptor, 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    VkWriteDescriptorSet object_buffer_write = descriptor_set.write_descriptor_set(&object_descriptor, 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    VkWriteDescriptorSet material_buffer_write = descriptor_set.write_descriptor_set(&material_descriptor, 6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    const std::array<VkWriteDescriptorSet, 7> write_descriptor_sets = {
+    std::vector<VkWriteDescriptorSet> write_descriptor_sets = {
         acceleration_structure_write,
-        result_image_write,
+        accumulation_image_write,
         uniform_buffer_write,
         vertex_buffer_write,
         index_buffer_write,
         object_buffer_write,
-        material_buffer_write
+        material_buffer_write,
     };
+
+    std::vector<VkDescriptorImageInfo> texture_descriptors;
+    if (!scene_textures.get_textures().empty()) {
+        texture_descriptors.resize(scene_textures.get_textures().size());
+
+        for (size_t i = 0; i < scene_textures.get_textures().size(); i++)
+            texture_descriptors[i] = DescriptorSet::create_descriptor(scene_textures.get_textures()[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, texture_sampler.handle());
+
+        VkWriteDescriptorSet texture_write = descriptor_set.write_descriptor_set(
+            texture_descriptors.data(), 8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, static_cast<uint32_t>(texture_descriptors.size()));
+        write_descriptor_sets.push_back(texture_write);
+    }
 
     DescriptorSet::update_write_descriptors(device, write_descriptor_sets.data(), static_cast<uint32_t>(write_descriptor_sets.size()));
 }
@@ -212,7 +232,8 @@ void PathTracer::update_descriptor_sets()
 void PathTracer::set_scene(CommandPool& command_pool, const Scene& scene)
 {
     scene_buffer.rebuild(command_pool, scene);
-    acceleration_structure.rebuild(command_pool, scene_buffer);
+    scene_textures.rebuild(command_pool, scene);
+    acceleration_structure.rebuild(command_pool, scene, scene_buffer);
 
     update_descriptor_sets();
 }
@@ -290,7 +311,7 @@ void PathTracer::set_extent(CommandPool& command_pool, uint32_t width, uint32_t 
     accumulation_image.rebuild(command_pool, { width, height }, accumulation_image.get_format());
 
     VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
-    VkWriteDescriptorSet write_descriptor_set = descriptor_set.write_descriptor_set(image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    VkWriteDescriptorSet write_descriptor_set = descriptor_set.write_descriptor_set(&image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     DescriptorSet::update_write_descriptors(device, &write_descriptor_set, 1);
 }
 

@@ -24,12 +24,18 @@ DescriptorSetLayout::~DescriptorSetLayout()
     vkDestroyDescriptorSetLayout(device.logical_handle(), layout, nullptr);
 }
 
-VkDescriptorSetLayoutBinding DescriptorSetLayout::create_layout_binding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stage)
+VkDescriptorSetLayoutBinding DescriptorSetLayout::create_layout_binding(
+    uint32_t binding,
+    VkDescriptorType type,
+    VkShaderStageFlags stage,
+    uint32_t count,
+    const VkSampler* samplers)
 {
     VkDescriptorSetLayoutBinding layout_binding{};
     layout_binding.binding = binding;
     layout_binding.descriptorType = type;
-    layout_binding.descriptorCount = 1;
+    layout_binding.descriptorCount = count;
     layout_binding.stageFlags = stage;
+    layout_binding.pImmutableSamplers = samplers;
     return layout_binding;
 }

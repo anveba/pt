@@ -101,6 +101,12 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
     prop2.pNext = &info.ray_tracing_properties;
     vkGetPhysicalDeviceProperties2(device, &prop2);
 
+    // Get acceleration structure properties
+    info.acceleration_structure_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR };
+    prop2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+    prop2.pNext = &info.acceleration_structure_properties;
+    vkGetPhysicalDeviceProperties2(device, &prop2);
+
     // Get ray tracing features
     VkPhysicalDeviceFeatures2 features2 = {};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -131,7 +137,7 @@ static void query_physical_device_info(PhysicalDeviceInfo& info, VkPhysicalDevic
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
     for (uint32_t i = 0; i < queue_families.size(); i++) {
-        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) 
+        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
             info.graphics_family_idx = i;
 
         if (surface != VK_NULL_HANDLE) {
@@ -273,7 +279,7 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
     std::vector<const char*> required_extensions;
     get_required_extensions(required_extensions, usage);
 
-    std::set<uint32_t> unique_queue_families = { 
+    std::set<uint32_t> unique_queue_families = {
         physical_device_info.graphics_family_idx.value(),
         physical_device_info.present_family_idx.value(),
         physical_device_info.compute_family_idx.value(),
@@ -304,7 +310,7 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 
     features2.features = {};
-    
+
     create_info.pNext = &features2;
     create_info.pEnabledFeatures = nullptr;
 
@@ -321,15 +327,11 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
         throw std::runtime_error("Failed to create logical device.");
 }
 
-void Device::create_image(
-    VkImage& image,
-    VkDeviceMemory& memory,
-    uint32_t width,
-    uint32_t height,
-    VkFormat format,
-    VkImageTiling tiling,
-    VkImageUsageFlags usage,
-    VkMemoryPropertyFlags properties)
+VkImage Device::create_image(uint32_t width,
+                             uint32_t height,
+                             VkFormat format,
+                             VkImageTiling tiling,
+                             VkImageUsageFlags usage)
 {
     VkImageCreateInfo image_create_info{};
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -346,21 +348,24 @@ void Device::create_image(
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
+    VkImage image;
     if (vkCreateImage(logical, &image_create_info, nullptr, &image) != VK_SUCCESS)
         throw std::runtime_error("Failed to create image.");
+    return image;
+}
 
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(logical, image, &mem_requirements);
-
+VkDeviceMemory Device::allocate_memory(VkDeviceSize size, uint32_t memory_type_bits, VkMemoryPropertyFlags properties)
+{
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = find_suitable_memory_type(mem_requirements.memoryTypeBits, properties);
+    alloc_info.allocationSize = size;
+    alloc_info.memoryTypeIndex = find_suitable_memory_type(memory_type_bits, properties);
 
+    VkDeviceMemory memory;
     if (vkAllocateMemory(logical, &alloc_info, nullptr, &memory) != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate image memory.");
 
-    vkBindImageMemory(logical, image, memory, 0);
+    return memory;
 }
 
 VkFormat Device::find_image_format(

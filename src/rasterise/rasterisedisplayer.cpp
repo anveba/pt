@@ -162,14 +162,15 @@ void RasteriseDisplayer::destroy_framebuffers()
 
 void RasteriseDisplayer::create_depth_image()
 {
-    display.get_device().create_image(depth_image,
-                                      depth_image_memory,
-                                      rasteriser.extent.width,
-                                      rasteriser.extent.height,
-                                      rasteriser.depth_format,
-                                      VK_IMAGE_TILING_OPTIMAL,
-                                      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    depth_image = display.get_device().create_image(rasteriser.extent.width,
+                                                    rasteriser.extent.height,
+                                                    rasteriser.depth_format,
+                                                    VK_IMAGE_TILING_OPTIMAL,
+                                                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(display.get_device().logical_handle(), depth_image, &mem_requirements);
+    depth_image_memory = display.get_device().allocate_memory(mem_requirements.size, mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vkBindImageMemory(display.get_device().logical_handle(), depth_image, depth_image_memory, 0);
     depth_image_view = display.get_device().create_image_view(depth_image, rasteriser.depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 

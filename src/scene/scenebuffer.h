@@ -40,7 +40,6 @@ class SceneBuffer
 
     void rebuild(CommandPool& command_pool, const Scene& scene);
 
-    inline const Scene& get_scene() const { return *scene; }
     inline const VkBuffer& handle() const { return buffer; }
 
     inline VkDeviceSize get_vertex_offset() const { return 0; }
@@ -56,15 +55,15 @@ class SceneBuffer
 
     // Goes from i = 0 to i = number of object variants, inclusive. The last element contains the end indices.
     inline const BufferIndices& get_start_indices(size_t i) const { return start_indices[i]; }
+    inline size_t object_variant_count() const { return start_indices.size() - 1; }
 
   private:
     Device& device;
-    const Scene* scene;
 
     VkBuffer buffer;
     VkDeviceMemory buffer_memory;
     VkBufferUsageFlagBits buffer_usage;
-    VkMemoryAllocateFlags allocate_flags;
+    VkMemoryAllocateFlags buffer_allocate_flags;
 
     VkDeviceSize index_offset;
     VkDeviceSize instance_offset;
@@ -73,8 +72,8 @@ class SceneBuffer
 
     std::vector<BufferIndices> start_indices;
 
-    void build_buffers(CommandPool& command_pool);
-    void free();
+    void build(CommandPool& command_pool, const Scene& scene);
+    void destroy();
 
     NO_COPY(SceneBuffer);
 };

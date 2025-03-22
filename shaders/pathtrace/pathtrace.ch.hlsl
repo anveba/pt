@@ -6,6 +6,8 @@ StructuredBuffer<float4> vertex_buffer : register(t3);
 StructuredBuffer<uint> index_buffer : register(t4);
 StructuredBuffer<InstanceData> instance_buffer : register(t5);
 StructuredBuffer<PbrMaterial> material_buffer : register(t6);
+SamplerState texture_sampler : register(s7);
+Texture2D<float4> textures[64] : register(t8);
 
 PbrMaterial get_material(uint i) {
     return material_buffer[i];
@@ -17,6 +19,10 @@ InstanceData get_instance_data(uint i) {
 
 uint3 get_index(uint i) {
     return uint3(index_buffer[i + 0], index_buffer[i + 1], index_buffer[i + 2]);
+}
+
+bool has_texture(uint i) {
+    return i < 4294967295;
 }
 
 Vertex get_vertex(uint i) {
@@ -85,15 +91,19 @@ void main(inout RayPayload payload, in Attributes attributes)
     float bary_beta = attributes.barycentric.x;
     float bary_gamma = attributes.barycentric.y;
     float3 obj_space_normal = normalize(bary_alpha * v_a.normal + bary_beta * v_b.normal + bary_gamma * v_c.normal);
+    float2 uv = bary_alpha * v_a.uv + bary_beta * v_b.uv + bary_gamma * v_c.uv;
 
     float3 base_colour = material.base_colour.rgb;
+    if (has_texture(material.base_emission_roughness_specular_maps.x))
+        base_colour *= textures[material.base_emission_roughness_specular_maps.x].SampleLevel(texture_sampler, uv, 0).rgb;
+
     float roughness = material.base_colour.a;
     float3 emission = material.emission.rgb * material.emission.a;
     float metalness = material.metalness_anisotropy.r;
 
     float3 f0 = lerp(0.05, base_colour, metalness);
-    float material_alpha = lerp(0.1, 1.0, roughness);
-    material_alpha = material_alpha * material_alpha;
+    float material_alpha = roughness * roughness;
+    material_alpha = lerp(0.01, 1.0, material_alpha);
 
     float3 n = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
     float3 o = normalize(-WorldRayDirection());

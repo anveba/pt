@@ -81,28 +81,25 @@ inline SceneBuffer<T>::SceneBuffer(
     CommandPool& command_pool,
     const Scene& scene,
     VkBufferUsageFlagBits buffer_usage,
-    VkMemoryAllocateFlags allocate_flags)
+    VkMemoryAllocateFlags buffer_allocate_flags)
     : device(device)
-    , scene(&scene)
     , buffer_usage(buffer_usage)
-    , allocate_flags(allocate_flags)
+    , buffer_allocate_flags(buffer_allocate_flags)
 {
-    build_buffers(command_pool);
+    build(command_pool, scene);
 }
 
 template<typename T>
 inline SceneBuffer<T>::~SceneBuffer()
 {
-    free();
+    destroy();
 }
 
 template<typename T>
-inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
+inline void SceneBuffer<T>::build(CommandPool& command_pool, const Scene& scene)
 {
-    assert(scene != nullptr);
-
-    size_t vertex_count = 0, tri_count = 0, instance_count = 0, material_count = scene->get_materials().size();
-    const std::vector<ObjectVariant>& object_variants = scene->get_object_variants();
+    size_t vertex_count = 0, tri_count = 0, instance_count = 0, material_count = scene.get_materials().size();
+    const std::vector<ObjectVariant>& object_variants = scene.get_object_variants();
 
     for (const ObjectVariant& variant : object_variants) {
         vertex_count += variant.mesh.get_vertices().size();
@@ -152,14 +149,14 @@ inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
     assert(start_indices.back().instance == instance_count);
 
     PbrMaterial* const material_data = (PbrMaterial*)((uint8_t*)instance_data + instance_region_size);
-    memcpy(material_data, scene->get_materials().data(), scene->get_materials().size() * sizeof(PbrMaterial));
+    memcpy(material_data, scene.get_materials().data(), scene.get_materials().size() * sizeof(PbrMaterial));
 
     device.create_buffer(buffer,
                          buffer_memory,
                          total_buffer_size,
                          buffer_usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                         allocate_flags);
+                         buffer_allocate_flags);
 
     command_pool.transfer_to_buffer(buffer,
                                     all_data,
@@ -174,7 +171,7 @@ inline void SceneBuffer<T>::build_buffers(CommandPool& command_pool)
 }
 
 template<typename T>
-inline void SceneBuffer<T>::free()
+inline void SceneBuffer<T>::destroy()
 {
     vkDestroyBuffer(device.logical_handle(), buffer, nullptr);
     vkFreeMemory(device.logical_handle(), buffer_memory, nullptr);
@@ -183,9 +180,8 @@ inline void SceneBuffer<T>::free()
 template<typename T>
 inline void SceneBuffer<T>::rebuild(CommandPool& command_pool, const Scene& scene)
 {
-    free();
-    this->scene = &scene;
-    build_buffers(command_pool);
+    destroy();
+    build(command_pool, scene);
 }
 
 template class SceneBuffer<PathTraceInstanceData>;

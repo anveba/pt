@@ -42,15 +42,15 @@ PostProcessing::~PostProcessing()
 
 void PostProcessing::set_source_image(VkImageView source_image_view)
 {
-    VkDescriptorImageInfo source_image_descriptor = DescriptorSet::create_descriptor(source_image_view, VK_IMAGE_LAYOUT_GENERAL);
-    VkWriteDescriptorSet source_image_write = descriptor_set.write_descriptor_set(source_image_descriptor, 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    VkDescriptorImageInfo source_image_descriptor = DescriptorSet::create_descriptor(source_image_view, VK_IMAGE_LAYOUT_GENERAL); // TODO read only layout?
+    VkWriteDescriptorSet source_image_write = descriptor_set.write_descriptor_set(&source_image_descriptor, 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     DescriptorSet::update_write_descriptors(device, &source_image_write, 1);
 }
 
 void PostProcessing::set_result_image(VkImageView result_image_view)
 {
     VkDescriptorImageInfo result_image_descriptor = DescriptorSet::create_descriptor(result_image_view, VK_IMAGE_LAYOUT_GENERAL);
-    VkWriteDescriptorSet result_image_write = descriptor_set.write_descriptor_set(result_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    VkWriteDescriptorSet result_image_write = descriptor_set.write_descriptor_set(&result_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     DescriptorSet::update_write_descriptors(device, &result_image_write, 1);
 }
 

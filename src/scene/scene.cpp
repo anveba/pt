@@ -30,11 +30,11 @@ static Mat4 convert_matrix(aiMatrix4x4 m)
 }
 
 static uint32_t process_texture(
-    const aiMaterial* mat, 
-    aiTextureType texture_type, 
-    std::unordered_map<std::string, uint32_t>& texture_index_map, 
-    uint32_t& current_texture_index) {
-    
+    const aiMaterial* mat,
+    aiTextureType texture_type,
+    std::unordered_map<std::string, uint32_t>& texture_index_map,
+    uint32_t& current_texture_index)
+{
     if (mat->GetTextureCount(texture_type) == 0)
         return UINT32_MAX;
     aiString path;
@@ -52,7 +52,7 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
     assert(scene->mNumMaterials > 0);
 
     materials.resize(scene->mNumMaterials);
-    
+
     std::unordered_map<std::string, uint32_t> texture_index_map;
     uint32_t current_texture_index = 0;
 
@@ -83,8 +83,7 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
             process_texture(mat, aiTextureType_BASE_COLOR, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_EMISSION_COLOR, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_index_map, current_texture_index),
-            process_texture(mat, aiTextureType_SPECULAR, texture_index_map, current_texture_index)
-        );
+            process_texture(mat, aiTextureType_SPECULAR, texture_index_map, current_texture_index));
         if (materials[i].base_emission_roughness_specular_maps.x == UINT32_MAX)
             materials[i].base_emission_roughness_specular_maps.x = process_texture(mat, aiTextureType_DIFFUSE, texture_index_map, current_texture_index);
         if (materials[i].base_emission_roughness_specular_maps.y == UINT32_MAX)
@@ -95,17 +94,15 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
             process_texture(mat, aiTextureType_SHEEN, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_CLEARCOAT, texture_index_map, current_texture_index),
             process_texture(mat, aiTextureType_METALNESS, texture_index_map, current_texture_index),
-            process_texture(mat, aiTextureType_NORMALS, texture_index_map, current_texture_index)
-        );
+            process_texture(mat, aiTextureType_NORMALS, texture_index_map, current_texture_index));
         if (mat->Get(AI_MATKEY_EMISSIVE_INTENSITY, emission_intensity) != aiReturn_SUCCESS)
             emission_intensity = includes_emission_data ? 1.0f : 0.0f;
     }
 
     texture_paths.resize(texture_index_map.size());
 
-    for (const auto& texture_index : texture_index_map) 
+    for (const auto& texture_index : texture_index_map)
         texture_paths[texture_index.second] = texture_index.first;
-    
 }
 
 static void process_meshes(const aiScene* scene, std::vector<ObjectVariant>& object_variants)
@@ -117,7 +114,7 @@ static void process_meshes(const aiScene* scene, std::vector<ObjectVariant>& obj
         const auto mesh = scene->mMeshes[i];
         object_variants[i].mesh.get_vertices().resize(mesh->mNumVertices);
 
-        bool has_uvs = mesh->GetNumUVChannels() != 0;
+        bool has_uvs = mesh->mTextureCoords[0] != nullptr;
         if (!has_uvs)
             std::cerr << "Warning: mesh \"" << mesh->mName.C_Str() << "\" has no UVs." << std::endl;
 
@@ -163,6 +160,26 @@ static void process_scene_node(std::vector<ObjectVariant>& variants, Camera& cam
         process_scene_node(variants, camera, scene, node->mChildren[i], transform);
 }
 
+static void print_scene_details(const Scene& scene)
+{
+    size_t instance_count = 0, unique_vertex_count = 0, unique_triangle_count = 0, triangle_count = 0;
+    for (const ObjectVariant& variant : scene.get_object_variants()) {
+        instance_count += variant.instances.size();
+        unique_vertex_count += variant.mesh.get_vertices().size();
+        unique_triangle_count += variant.mesh.get_indexed_triangles().size();
+        triangle_count += variant.instances.size() * variant.mesh.get_indexed_triangles().size();
+    }
+    std::cout << "Scene has:\n"
+              << "    " << scene.get_object_variants().size() << " meshes\n"
+              << "    " << scene.get_materials().size() << " materials\n"
+              << "    " << scene.get_texture_paths().size() << " textures\n"
+              << "    " << instance_count << " instances\n"
+              << "    " << unique_vertex_count << " unique vertices\n"
+              << "    " << unique_triangle_count << " unique triangles\n"
+              << "    " << triangle_count << " total triangles\n"
+              << std::endl;
+}
+
 void Scene::from_file(const std::string& path, Camera& camera)
 {
     clear();
@@ -171,13 +188,15 @@ void Scene::from_file(const std::string& path, Camera& camera)
     const aiScene* scene = importer.ReadFile(
         path,
         aiProcess_Triangulate |
-            aiProcess_FlipUVs |
             aiProcess_GenNormals |
             aiProcess_JoinIdenticalVertices); // TODO: take a look at post processing steps
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         std::runtime_error("Could not load scene at " + path + ": " + importer.GetErrorString());
 
+    resource_directory = directory_of(path);
+
+    std::cout << "Found " << scene->mNumCameras << " camera(s) in scene." << std::endl;
     if (scene->mNumCameras > 0) {
         const auto& scene_cam = scene->mCameras[0];
         Mat4 transform = convert_matrix(scene->mRootNode->mTransformation * scene->mRootNode->FindNode(scene_cam->mName)->mTransformation);
@@ -200,21 +219,7 @@ void Scene::from_file(const std::string& path, Camera& camera)
 
     process_scene_node(object_variants, camera, scene, scene->mRootNode, Mat4(1.0f));
 
-    size_t instance_count = 0, unique_vertex_count = 0, unique_triangle_count = 0, triangle_count = 0;
-    for (const ObjectVariant& variant : object_variants) {
-        instance_count += variant.instances.size();
-        unique_vertex_count += variant.mesh.get_vertices().size();
-        unique_triangle_count += variant.mesh.get_indexed_triangles().size();
-        triangle_count += variant.instances.size() * variant.mesh.get_indexed_triangles().size();
-    }
-    std::cout << "Scene \"" << scene->mName.C_Str() << "\" has:\n"
-              << "    " << scene->mNumCameras << " cameras\n"
-              << "    " << object_variants.size() << " meshes\n"
-              << "    " << instance_count << " instances\n"
-              << "    " << unique_vertex_count << " unique vertices\n"
-              << "    " << unique_triangle_count << " unique triangles\n"
-              << "    " << triangle_count << " total triangles\n"
-              << std::endl;
+    print_scene_details(*this);
 }
 
 void Scene::clear()

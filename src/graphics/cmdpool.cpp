@@ -72,22 +72,20 @@ void CommandPool::destroy_command_buffer(VkCommandBuffer command_buffer)
 
 void CommandPool::transfer_to_buffer(VkBuffer& buffer, const void* src_data, size_t size)
 {
-    VkDeviceSize buffer_size = size;
-
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     device.create_buffer(staging_buffer,
                          staging_buffer_memory,
-                         buffer_size,
+                         size,
                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     void* mapped;
-    vkMapMemory(device.logical_handle(), staging_buffer_memory, 0, buffer_size, 0, &mapped);
+    vkMapMemory(device.logical_handle(), staging_buffer_memory, 0, size, 0, &mapped);
     memcpy(mapped, src_data, size);
     vkUnmapMemory(device.logical_handle(), staging_buffer_memory);
 
-    copy_buffer(staging_buffer, buffer, buffer_size);
+    copy_buffer(staging_buffer, buffer, size);
 
     vkDestroyBuffer(device.logical_handle(), staging_buffer, nullptr);
     vkFreeMemory(device.logical_handle(), staging_buffer_memory, nullptr);

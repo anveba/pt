@@ -21,6 +21,7 @@ struct PhysicalDeviceInfo
     VkDeviceSize heap_size;
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR ray_tracing_properties;
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR acceleration_structure_properties;
 
     VkPhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features;
     VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features;
@@ -48,8 +49,6 @@ class Device
 
     void query_swap_chain_support(SwapChainSupport& support, const Window& window);
 
-    VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_mask);
-
     uint32_t find_suitable_memory_type(int32_t typeFilter,
                                        VkMemoryPropertyFlags desired_flags);
     VkFormat find_image_format(const std::vector<VkFormat>& desirable,
@@ -71,14 +70,15 @@ class Device
 
     inline void wait_idle() { vkDeviceWaitIdle(logical); }
 
-    void create_image(VkImage& image,
-                      VkDeviceMemory& memory,
-                      uint32_t width,
-                      uint32_t height,
-                      VkFormat format,
-                      VkImageTiling tiling,
-                      VkImageUsageFlags usage,
-                      VkMemoryPropertyFlags properties);
+    VkImage create_image(uint32_t width,
+                         uint32_t height,
+                         VkFormat format,
+                         VkImageTiling tiling,
+                         VkImageUsageFlags usage);
+
+    VkDeviceMemory allocate_memory(VkDeviceSize size, uint32_t memory_type_bits, VkMemoryPropertyFlags properties);
+
+    VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_mask);
 
     void create_buffer(VkBuffer& buffer,
                        VkDeviceMemory& memory,

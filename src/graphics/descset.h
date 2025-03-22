@@ -14,14 +14,16 @@ class DescriptorSet
     static void update_write_descriptors(Device& device, const VkWriteDescriptorSet* write_descriptors, uint32_t count);
 
     static VkDescriptorBufferInfo create_descriptor(VkBuffer buffer, VkDeviceSize size, VkDeviceSize offset = 0);
-    static VkDescriptorImageInfo create_descriptor(VkImageView image_view, VkImageLayout layout);
+    static VkDescriptorImageInfo create_descriptor(VkImageView image_view, VkImageLayout layout, VkSampler sampler = VK_NULL_HANDLE);
 
-    VkWriteDescriptorSet write_descriptor_set(const VkDescriptorBufferInfo& buffer_descriptor,
+    VkWriteDescriptorSet write_descriptor_set(const VkDescriptorBufferInfo* buffer_descriptor,
                                               uint32_t binding,
-                                              VkDescriptorType type);
-    VkWriteDescriptorSet write_descriptor_set(const VkDescriptorImageInfo& image_descriptor,
+                                              VkDescriptorType type,
+                                              uint32_t count = 1);
+    VkWriteDescriptorSet write_descriptor_set(const VkDescriptorImageInfo* image_descriptor,
                                               uint32_t binding,
-                                              VkDescriptorType type);
+                                              VkDescriptorType type,
+                                              uint32_t count = 1);
     VkWriteDescriptorSet write_descriptor_set(const VkAccelerationStructureKHR& acc_struct,
                                               VkWriteDescriptorSetAccelerationStructureKHR& write_descriptor_set,
                                               uint32_t binding);

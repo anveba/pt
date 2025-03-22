@@ -8,45 +8,47 @@
 #include "material.h"
 #include "mesh.h"
 #include "transform.h"
-#include "texturedata.h"
 
 struct Instance
 {
-  Transform transform;
-  uint32_t material_index;
+    Transform transform;
+    uint32_t material_index;
 };
 
 struct ObjectVariant
 {
-  std::vector<Instance> instances;
-  Mesh mesh;
+    std::vector<Instance> instances;
+    Mesh mesh;
 };
 
 class Scene
 {
-public:
-  Scene()
-  {
-  }
+  public:
+    Scene()
+    {
+    }
 
-  const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
-  const std::vector<PbrMaterial>& get_materials() const { return materials; }
-  const std::vector<PointLight>& get_point_lights() const { return point_lights; }
-  const std::vector<std::string>& get_texture_paths() const { return texture_paths; }
+    inline const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
+    inline const std::vector<PbrMaterial>& get_materials() const { return materials; }
+    inline const std::vector<PointLight>& get_point_lights() const { return point_lights; }
+    inline const std::vector<std::string>& get_texture_paths() const { return texture_paths; }
+    inline const std::string& get_resource_directory() const { return resource_directory; }
 
-  void from_file(const std::string &path, Camera &camera);
+    void from_file(const std::string& path, Camera& camera);
 
-private:
-  std::vector<ObjectVariant> object_variants;
-  std::vector<PointLight> point_lights;
-  std::vector<PbrMaterial> materials;
-  std::vector<std::string> texture_paths;
+  private:
+    std::vector<ObjectVariant> object_variants;
+    std::vector<PointLight> point_lights;
+    std::vector<PbrMaterial> materials;
+    std::vector<std::string> texture_paths;
 
-  void clear();
+    std::string resource_directory;
 
-  friend class SceneBuilder;
+    void clear();
 
-  NO_COPY(Scene);
+    friend class SceneBuilder;
+
+    NO_COPY(Scene);
 };
 
 #endif

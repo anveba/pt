@@ -27,38 +27,44 @@ VkDescriptorBufferInfo DescriptorSet::create_descriptor(VkBuffer buffer, VkDevic
     return buffer_descriptor;
 }
 
-VkDescriptorImageInfo DescriptorSet::create_descriptor(VkImageView image_view, VkImageLayout layout)
+VkDescriptorImageInfo DescriptorSet::create_descriptor(VkImageView image_view, VkImageLayout layout, VkSampler sampler)
 {
     VkDescriptorImageInfo image_descriptor{};
     image_descriptor.imageView = image_view;
     image_descriptor.imageLayout = layout;
+    image_descriptor.sampler = sampler;
     return image_descriptor;
 }
 
 VkWriteDescriptorSet DescriptorSet::write_descriptor_set(
-    const VkDescriptorBufferInfo& buffer_descriptor,
+    const VkDescriptorBufferInfo* buffer_descriptor,
     uint32_t binding,
-    VkDescriptorType type)
+    VkDescriptorType type,
+    uint32_t count)
 {
     VkWriteDescriptorSet buffer_write{};
     buffer_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     buffer_write.dstSet = descriptor_set;
     buffer_write.descriptorType = type;
     buffer_write.dstBinding = binding;
-    buffer_write.pBufferInfo = &buffer_descriptor;
-    buffer_write.descriptorCount = 1;
+    buffer_write.pBufferInfo = buffer_descriptor;
+    buffer_write.descriptorCount = count;
     return buffer_write;
 }
 
-VkWriteDescriptorSet DescriptorSet::write_descriptor_set(const VkDescriptorImageInfo& image_descriptor, uint32_t binding, VkDescriptorType type)
+VkWriteDescriptorSet DescriptorSet::write_descriptor_set(
+    const VkDescriptorImageInfo* image_descriptor,
+    uint32_t binding,
+    VkDescriptorType type,
+    uint32_t count)
 {
     VkWriteDescriptorSet image_write{};
     image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     image_write.dstSet = descriptor_set;
     image_write.descriptorType = type;
     image_write.dstBinding = binding;
-    image_write.pImageInfo = &image_descriptor;
-    image_write.descriptorCount = 1;
+    image_write.pImageInfo = image_descriptor;
+    image_write.descriptorCount = count;
     return image_write;
 }
 

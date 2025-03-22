@@ -6,16 +6,19 @@
 class AccelerationStructure
 {
   public:
-    AccelerationStructure(Device& device, CommandPool& command_pool, const SceneBuffer<PathTraceInstanceData>& scene_buffer);
+    // The scene and scene buffer given must correspond to one another.
+    AccelerationStructure(Device& device,
+                          CommandPool& command_pool,
+                          const Scene& scene,
+                          const SceneBuffer<PathTraceInstanceData>& scene_buffer);
     ~AccelerationStructure();
 
-    void rebuild(CommandPool& command_pool, const SceneBuffer<PathTraceInstanceData>& scene_buffer);
+    void rebuild(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer);
 
     inline const VkAccelerationStructureKHR& get_top_level() const { return tlas; }
 
   private:
     Device& device;
-    const SceneBuffer<PathTraceInstanceData>* scene_buffer;
 
     VkBuffer blas_buffer;
     VkDeviceMemory blas_memory;
@@ -25,8 +28,8 @@ class AccelerationStructure
     VkDeviceMemory tlas_memory;
     VkAccelerationStructureKHR tlas;
 
-    void create_blas(CommandPool& command_pool);
-    void create_tlas(CommandPool& command_pool);
+    void create_blas(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer);
+    void create_tlas(CommandPool& command_pool, const Scene& scene);
     void free();
 
     NO_COPY(AccelerationStructure);

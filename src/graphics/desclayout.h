@@ -16,7 +16,11 @@ class DescriptorSetLayout
 
     inline const VkDescriptorSetLayout& handle() const { return layout; }
 
-    static VkDescriptorSetLayoutBinding create_layout_binding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stage);
+    static VkDescriptorSetLayoutBinding create_layout_binding(uint32_t binding,
+                                                              VkDescriptorType type,
+                                                              VkShaderStageFlags stage,
+                                                              uint32_t count = 1,
+                                                              const VkSampler* samplers = nullptr);
 
   private:
     Device& device;

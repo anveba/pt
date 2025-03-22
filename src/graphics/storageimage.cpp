@@ -23,14 +23,19 @@ void StorageImage::rebuild(CommandPool& command_pool, VkExtent2D extent, VkForma
 
 void StorageImage::create(CommandPool& command_pool)
 {
-    device.create_image(image,
-                        memory,
-                        extent.width,
-                        extent.height,
-                        format,
-                        VK_IMAGE_TILING_OPTIMAL,
-                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    image = device.create_image(extent.width,
+                                extent.height,
+                                format,
+                                VK_IMAGE_TILING_OPTIMAL,
+                                VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(device.logical_handle(), image, &mem_requirements);
+
+    memory = device.allocate_memory(mem_requirements.size, mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    vkBindImageMemory(device.logical_handle(), image, memory, 0);
+
     view = device.create_image_view(image, format, VK_IMAGE_ASPECT_COLOR_BIT);
 
     VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();

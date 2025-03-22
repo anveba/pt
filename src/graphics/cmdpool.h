@@ -10,6 +10,7 @@ class CommandPool
     CommandPool(Device& device);
     ~CommandPool();
 
+    // TODO move and change so a caller can use their own command buffer
     void transfer_to_buffer(VkBuffer& buffer, const void* src_data, size_t size);
     void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
 

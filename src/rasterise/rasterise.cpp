@@ -252,7 +252,7 @@ void Rasteriser::create_pipeline()
 void Rasteriser::update_descriptor_set()
 {
     VkDescriptorBufferInfo buffer_info = DescriptorSet::create_descriptor(uniform_buffer.handle(), uniform_buffer.size());
-    VkWriteDescriptorSet descriptor_write = descriptor_set.write_descriptor_set(buffer_info, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    VkWriteDescriptorSet descriptor_write = descriptor_set.write_descriptor_set(&buffer_info, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     DescriptorSet::update_write_descriptors(device, &descriptor_write, 1);
 }
@@ -300,7 +300,7 @@ void Rasteriser::write_command_buffer(VkCommandBuffer command_buffer, VkFramebuf
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set.handle(), 0, nullptr);
 
-    for (size_t i = 0; i < scene_buffer.get_scene().get_object_variants().size(); i++) {
+    for (size_t i = 0; i < scene_buffer.object_variant_count(); i++) {
         const BufferIndices start_indices = scene_buffer.get_start_indices(i);
         const BufferIndices end_indices = scene_buffer.get_start_indices(i + 1);
         uint32_t index_count = end_indices.index - start_indices.index;
