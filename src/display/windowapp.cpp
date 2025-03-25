@@ -83,7 +83,7 @@ static void render_loop(IDisplayable** displayers, Camera& camera, Display& disp
         }
 
         if (width != display.get_extent().width || height != display.get_extent().height) {
-            width = display.get_extent().width; 
+            width = display.get_extent().width;
             height = display.get_extent().height;
             camera.aspect_ratio = float(width) / height;
             update_camera = true;
@@ -130,7 +130,7 @@ void WindowedApplication::begin(const Scene& scene, Camera& camera)
     PathTraceDisplayer path_trace_displayer(display, descriptor_pool, command_pool, scene, display.get_extent());
     path_trace_displayer.set_camera(camera);
 
-    IDisplayable* displayers[MAX_RENDER_TYPE]{};
+    IDisplayable* displayers[RENDER_TYPE_COUNT]{};
     displayers[RENDER_TYPE_PATH_TRACE] = &path_trace_displayer;
     displayers[RENDER_TYPE_RASTERISE] = &rasterise_displayer;
 

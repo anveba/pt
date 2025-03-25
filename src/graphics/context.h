@@ -7,8 +7,8 @@
 enum ContextUsage
 {
     CONTEXT_USAGE_MINIMUM = 0,
-    CONTEXT_USAGE_WINDOW_BIT = 1,
-    CONTEXT_USAGE_RAY_TRACE_BIT = 2,
+    CONTEXT_USAGE_WINDOW_BIT = 1 << 0,
+    CONTEXT_USAGE_RAY_TRACE_BIT = 1 << 1,
 };
 
 class VulkanContext

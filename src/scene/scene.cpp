@@ -69,17 +69,16 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
             if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, base_colour) != aiReturn_SUCCESS)
                 base_colour = aiColor3D(1.0f, 1.0f, 1.0f);
         if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness) != aiReturn_SUCCESS)
-            roughness = 1.0f;
+            roughness = 0.5f;
         if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission_colour) != aiReturn_SUCCESS) {
             emission_colour = aiColor3D(1.0f, 1.0f, 1.0f);
             includes_emission_data = false;
         }
         if (mat->Get(AI_MATKEY_SPECULAR_FACTOR, specular) != aiReturn_SUCCESS)
-            specular = 1.0f;
+            specular = 0.5f;
         if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metalness) != aiReturn_SUCCESS)
-            metalness = 1.0f;
+            metalness = 0.0f;
         materials[i].base_colour = Vec4(base_colour.r, base_colour.g, base_colour.b, roughness);
-        materials[i].emission = Vec4(emission_colour.r, emission_colour.g, emission_colour.b, emission_intensity);
         materials[i].metalness_anisotropy = Vec4(metalness, 0.0f, 0.0f, 0.0f);
 
         materials[i].col_emi_rgh_spec_maps = Uint4(
@@ -100,6 +99,7 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
             process_texture(mat, aiTextureType_NORMALS, texture_index_map, current_texture_index));
         if (mat->Get(AI_MATKEY_EMISSIVE_INTENSITY, emission_intensity) != aiReturn_SUCCESS)
             emission_intensity = includes_emission_data ? 1.0f : 0.0f;
+        materials[i].emission = Vec4(emission_colour.r, emission_colour.g, emission_colour.b, emission_intensity);
     }
 
     texture_paths.resize(texture_index_map.size());

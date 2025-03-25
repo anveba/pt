@@ -13,7 +13,8 @@
 enum RenderType
 {
     RENDER_TYPE_PATH_TRACE = 0,
-    RENDER_TYPE_RASTERISE = 1
+    RENDER_TYPE_RASTERISE = 1,
+    RENDER_TYPE_COUNT = 2
 };
 
 std::vector<char> read_bytes(const std::string& path);

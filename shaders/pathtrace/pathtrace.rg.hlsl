@@ -44,7 +44,7 @@ void main()
             ray_desc.TMax = 10000.0;
 
             uint i;
-            for (i = 0; i <= ubo.max_bounces; i++) {
+            for (i = 0; i < ubo.max_bounces; i++) {
 
                 ray_desc.Origin = ray_desc.Origin + payload.incoming_direction.w * ray_desc.Direction;
                 ray_desc.Direction = payload.incoming_direction.xyz;

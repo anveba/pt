@@ -13,8 +13,6 @@ struct RenderDebugInfo
     uint32_t samples;
 };
 
-constexpr int MAX_RENDER_TYPE = 2;
-
 class IDisplayable
 {
   public:

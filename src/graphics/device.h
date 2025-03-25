@@ -9,8 +9,8 @@
 enum DeviceUsage
 {
     DEVICE_USAGE_MINIMUM = 0,
-    DEVICE_USAGE_WINDOW_BIT = 1,
-    DEVICE_USAGE_RAY_TRACE_BIT = 2,
+    DEVICE_USAGE_WINDOW_BIT = 1 << 0,
+    DEVICE_USAGE_RAY_TRACE_BIT = 1 << 1,
 };
 
 struct PhysicalDeviceInfo
