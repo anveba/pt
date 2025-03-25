@@ -35,6 +35,4 @@ void transition_image_layout(
     VkPipelineStageFlags dst_stage,
     const VkImageSubresourceRange& subresource_range);
 
-std::string directory_of(const std::string& path);
-
 #endif

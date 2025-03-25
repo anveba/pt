@@ -305,12 +305,14 @@ void Rasteriser::write_command_buffer(VkCommandBuffer command_buffer, VkFramebuf
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set.handle(), 0, nullptr);
 
+    uint32_t first_instance = 0;
     for (size_t i = 0; i < scene_buffer.object_variant_count(); i++) {
         const BufferIndices start_indices = scene_buffer.get_start_indices(i);
         const BufferIndices end_indices = scene_buffer.get_start_indices(i + 1);
         uint32_t index_count = end_indices.index - start_indices.index;
         uint32_t instance_count = end_indices.instance - start_indices.instance;
-        vkCmdDrawIndexed(command_buffer, index_count, instance_count, start_indices.index, start_indices.vertex, 0);
+        vkCmdDrawIndexed(command_buffer, index_count, instance_count, start_indices.index, start_indices.vertex, first_instance);
+        first_instance += instance_count;
     }
 }
 

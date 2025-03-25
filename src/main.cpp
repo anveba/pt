@@ -1,4 +1,5 @@
 #include "display/windowapp.h"
+#include "pathtrace/ptdispatch.h"
 #include "scene/camera.h"
 #include "scene/scene.h"
 #include "scene/scenebuild.h"
@@ -17,7 +18,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    Camera camera(Vec3(0.0f, 0.0f, -10.0f),
+    Camera camera(Vec3(0.0f, 0.0f, 0.0f),
                   Quaternion(1.0f, 0.0f, 0.0f, 0.0f),
                   glm::radians(45.0f),
                   1.0f,
@@ -25,20 +26,31 @@ int main(int argc, char** argv)
                   10000.0f);
     Scene scene;
     SceneBuilder builder;
-    scene.from_file(std::string(argv[1]), camera);
-    // builder.set_material_scene(scene, camera);
+    builder.read_scene_description(scene, camera, argv[1]);
+
+    uint32_t width = 400, height = 400;
+    camera.aspect_ratio = float(width) / height;
+
+    std::cout << scene.scene_details() << std::endl;
 
     std::vector<const char*> validation_layers;
 #ifndef NDEBUG
     validation_layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
-    bool headless = false;
+    bool headless = true;
 
     if (headless) {
-
+        PathTraceDispatcher dispatcher(scene, width, height, validation_layers);
+        PathTraceParameters params{
+            .camera = camera,
+            .out_path = "data/test.png",
+            .samples = 64,
+            .max_bounces = 4,
+        };
+        dispatcher.start(params);
     } else {
-        WindowedApplication application(400, 400, validation_layers);
+        WindowedApplication application(width, height, validation_layers);
         application.begin(scene, camera);
     }
 }

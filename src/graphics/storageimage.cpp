@@ -1,9 +1,20 @@
 #include "storageimage.h"
 
-StorageImage::StorageImage(Device& device, CommandPool& command_pool, VkExtent2D extent, VkFormat format)
+StorageImage::StorageImage(Device& device,
+                           CommandPool& command_pool,
+                           VkExtent2D extent,
+                           VkFormat format,
+                           VkImageUsageFlagBits usage_flags,
+                           VkImageLayout layout,
+                           VkMemoryPropertyFlagBits memory_flags,
+                           VkImageTiling tiling)
     : device(device)
     , extent(extent)
     , format(format)
+    , usage_flags(usage_flags)
+    , layout(layout)
+    , memory_flags(memory_flags)
+    , tiling(tiling)
 {
     create(command_pool);
 }
@@ -13,11 +24,10 @@ StorageImage::~StorageImage()
     destroy();
 }
 
-void StorageImage::rebuild(CommandPool& command_pool, VkExtent2D extent, VkFormat format)
+void StorageImage::rebuild(CommandPool& command_pool, VkExtent2D extent)
 {
     destroy();
     this->extent = extent;
-    this->format = format;
     create(command_pool);
 }
 
@@ -26,13 +36,13 @@ void StorageImage::create(CommandPool& command_pool)
     image = device.create_image(extent.width,
                                 extent.height,
                                 format,
-                                VK_IMAGE_TILING_OPTIMAL,
-                                VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+                                tiling,
+                                usage_flags);
 
     VkMemoryRequirements mem_requirements;
     vkGetImageMemoryRequirements(device.logical_handle(), image, &mem_requirements);
 
-    memory = device.allocate_memory(mem_requirements.size, mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    memory = device.allocate_memory(mem_requirements.size, mem_requirements.memoryTypeBits, memory_flags);
 
     vkBindImageMemory(device.logical_handle(), image, memory, 0);
 
@@ -43,7 +53,7 @@ void StorageImage::create(CommandPool& command_pool)
     transition_image_layout(command_buffer,
                             image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_GENERAL,
+                            layout,
                             0,
                             0,
                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,

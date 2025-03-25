@@ -60,6 +60,6 @@ void main()
     }
     // This condition is used in order to zero out NaN values that may be present in the image.
     // TODO: do this in a compute shader right after image creation (or with vkCmdClearColorImage?)
-    float4 old_value = ubo.old_samples_mult == 0.0 ? 0.0 : ubo.old_samples_mult * dest_image[int2(id.xy)];
-    dest_image[int2(id.xy)] = old_value + ubo.new_samples_mult * float4(radiance_sum / ubo.samples, 0.0);
+    float4 old_value = (ubo.old_samples_mult == 0.0) ? float4(0.0, 0.0, 0.0, 1.0) : ubo.old_samples_mult * dest_image[int2(id.xy)];
+    dest_image[int2(id.xy)] = old_value + ubo.new_samples_mult * float4(radiance_sum / ubo.samples, 1.0);
 }

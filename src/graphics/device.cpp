@@ -281,10 +281,12 @@ void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
 
     std::set<uint32_t> unique_queue_families = {
         physical_device_info.graphics_family_idx.value(),
-        physical_device_info.present_family_idx.value(),
         physical_device_info.compute_family_idx.value(),
         physical_device_info.transfer_family_idx.value()
     };
+    if (usage & DEVICE_USAGE_WINDOW_BIT)
+        unique_queue_families.insert(physical_device_info.present_family_idx.value());
+
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
 
     float queue_priority = 1.0f;

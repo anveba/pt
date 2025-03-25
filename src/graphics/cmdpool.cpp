@@ -45,8 +45,10 @@ void CommandPool::end_one_time_use_command_buffer(VkCommandBuffer command_buffer
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &command_buffer;
 
-    vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(queue);
+    if (vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS)
+        throw std::runtime_error("Failed to submit single-use command buffer");
+
+    vkQueueWaitIdle(queue); // TODO: remove?
 
     vkFreeCommandBuffers(device.logical_handle(), command_pool, 1, &command_buffer);
 }

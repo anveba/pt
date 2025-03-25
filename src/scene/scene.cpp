@@ -1,8 +1,10 @@
 #include "scene.h"
 
+#include "io/ioutil.h"
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <sstream>
 
 static Mat4 convert_matrix(aiMatrix4x4 m)
 {
@@ -161,24 +163,25 @@ static void process_scene_node(std::vector<ObjectVariant>& variants, Camera& cam
         process_scene_node(variants, camera, scene, node->mChildren[i], transform);
 }
 
-static void print_scene_details(const Scene& scene)
+std::string Scene::scene_details()
 {
     size_t instance_count = 0, unique_vertex_count = 0, unique_triangle_count = 0, triangle_count = 0;
-    for (const ObjectVariant& variant : scene.get_object_variants()) {
+    for (const ObjectVariant& variant : get_object_variants()) {
         instance_count += variant.instances.size();
         unique_vertex_count += variant.mesh.get_vertices().size();
         unique_triangle_count += variant.mesh.get_indexed_triangles().size();
         triangle_count += variant.instances.size() * variant.mesh.get_indexed_triangles().size();
     }
-    std::cout << "Scene has:\n"
-              << "    " << scene.get_object_variants().size() << " meshes\n"
-              << "    " << scene.get_materials().size() << " materials\n"
-              << "    " << scene.get_texture_paths().size() << " textures\n"
-              << "    " << instance_count << " instances\n"
-              << "    " << unique_vertex_count << " unique vertices\n"
-              << "    " << unique_triangle_count << " unique triangles\n"
-              << "    " << triangle_count << " total triangles\n"
-              << std::endl;
+    std::stringstream stream;
+    stream << "Scene has:\n"
+           << "    " << get_object_variants().size() << " meshes\n"
+           << "    " << get_materials().size() << " materials\n"
+           << "    " << get_texture_paths().size() << " textures\n"
+           << "    " << instance_count << " instances\n"
+           << "    " << unique_vertex_count << " unique vertices\n"
+           << "    " << unique_triangle_count << " unique triangles\n"
+           << "    " << triangle_count << " total triangles\n";
+    return stream.str();
 }
 
 void Scene::from_file(const std::string& path, Camera& camera)
@@ -221,7 +224,7 @@ void Scene::from_file(const std::string& path, Camera& camera)
 
     process_scene_node(object_variants, camera, scene, scene->mRootNode, Mat4(1.0f));
 
-    print_scene_details(*this);
+    assert(check_valid());
 }
 
 void Scene::clear()
@@ -229,4 +232,30 @@ void Scene::clear()
     object_variants.clear();
     point_lights.clear();
     materials.clear();
+}
+
+static bool texture_indices_are_valid(Uint4 indices, uint32_t size)
+{
+    return (indices.x < size || indices.x == UINT32_MAX) &&
+           (indices.y < size || indices.y == UINT32_MAX) &&
+           (indices.z < size || indices.z == UINT32_MAX) &&
+           (indices.w < size || indices.w == UINT32_MAX);
+}
+
+bool Scene::check_valid()
+{
+    for (const auto& variant : object_variants) {
+        for (const auto& inst : variant.instances) {
+            if (inst.material_index >= materials.size())
+                return false;
+        }
+    }
+
+    for (const auto& mat : materials) {
+        if (!texture_indices_are_valid(mat.col_emi_rgh_spec_maps, texture_paths.size()) ||
+            !texture_indices_are_valid(mat.shn_clcoat_metal_norm_maps, texture_paths.size())) {
+            return false;
+        }
+    }
+    return true;
 }

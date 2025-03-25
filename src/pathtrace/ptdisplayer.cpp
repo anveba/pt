@@ -12,7 +12,7 @@ PathTraceDisplayer::PathTraceDisplayer(
     : image_semaphore(display.get_device(), false)
     , render_semaphore(display.get_device(), false)
     , render_fence(display.get_device(), true)
-    , intermediate_image(display.get_device(), command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT)
+    , intermediate_image(display.get_device(), command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VkImageUsageFlagBits(VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT), VK_IMAGE_LAYOUT_GENERAL, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
     , display(display)
     , command_pool(command_pool)
     , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, extent)
@@ -35,7 +35,7 @@ void PathTraceDisplayer::set_extent(uint32_t width, uint32_t height)
 {
     path_tracer.set_extent(command_pool, width, height);
     VkExtent2D image_extent = path_tracer.get_accumulation_image().get_extent();
-    intermediate_image.rebuild(command_pool, image_extent, intermediate_image.get_format());
+    intermediate_image.rebuild(command_pool, image_extent);
     tone_mapper.set_source_image(path_tracer.get_accumulation_image().get_view());
     tone_mapper.set_result_image(intermediate_image.get_view());
     tone_mapper.set_extent(image_extent);
@@ -266,13 +266,13 @@ void PathTraceDisplayer::blit_result(VkImage image, uint32_t width, uint32_t hei
                             VK_PIPELINE_STAGE_TRANSFER_BIT,
                             subresource_range);
 
-    VkImageBlit blit {};
+    VkImageBlit blit{};
     blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     blit.srcOffsets[0] = { 0, 0, 0 };
-    blit.srcOffsets[1] = { 
-        static_cast<int32_t>(intermediate_image.get_extent().width), 
-        static_cast<int32_t>(intermediate_image.get_extent().height), 
-        1 
+    blit.srcOffsets[1] = {
+        static_cast<int32_t>(intermediate_image.get_extent().width),
+        static_cast<int32_t>(intermediate_image.get_extent().height),
+        1
     };
     blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     blit.dstOffsets[0] = { 0, 0, 0 };

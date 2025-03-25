@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-constexpr uint32_t MAX_TEXTURE_COUNT = 256; 
+constexpr uint32_t MAX_TEXTURE_COUNT = 256;
 
 std::vector<VkDescriptorPoolSize> PathTracer::get_descriptor_pool_sizes()
 {
@@ -64,7 +64,7 @@ PathTracer::PathTracer(
     , scene_textures(device, command_pool, scene, 0)
     , acceleration_structure(device, command_pool, scene, scene_buffer)
     , uniform_buffer(device, sizeof(PathTraceUniformData))
-    , accumulation_image(device, command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT)
+    , accumulation_image(device, command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VkImageUsageFlagBits(VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT), VK_IMAGE_LAYOUT_GENERAL, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
     , texture_sampler(device)
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()), get_descriptor_binding_flags().data())
     , descriptor_set(descriptor_pool, descriptor_set_layout)
@@ -233,7 +233,7 @@ void PathTracer::update_descriptor_sets()
 
         if (scene_textures.get_textures().size() > MAX_TEXTURE_COUNT)
             throw std::runtime_error("Number of textures were more than the maximum number of " + MAX_TEXTURE_COUNT);
-            
+
         texture_descriptors.resize(scene_textures.get_textures().size());
 
         for (size_t i = 0; i < scene_textures.get_textures().size(); i++)
@@ -327,7 +327,7 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer)
 
 void PathTracer::set_extent(CommandPool& command_pool, uint32_t width, uint32_t height)
 {
-    accumulation_image.rebuild(command_pool, { width, height }, accumulation_image.get_format());
+    accumulation_image.rebuild(command_pool, { width, height });
 
     VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(accumulation_image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
     VkWriteDescriptorSet write_descriptor_set = descriptor_set.write_descriptor_set(&image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);

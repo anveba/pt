@@ -7,6 +7,7 @@ class Transform
 {
   public:
     Transform()
+        : Transform(Mat4(1.0f))
     {
     }
 

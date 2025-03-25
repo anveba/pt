@@ -20,8 +20,9 @@ static VkFormat get_image_format_from_channel_count(int channels)
     }
 }
 
-static std::string full_path(const std::string& base_directory, const std::string path) {
-    std::string result = base_directory + "/" + path;
+static std::string full_path(const std::string& base_directory, const std::string path)
+{
+    std::string result = base_directory + path;
     std::replace(result.begin(), result.end(), '\\', '/');
     return result;
 }
@@ -118,7 +119,7 @@ static void load_texture_data(
     for (size_t i = 0; i < texture_paths.size(); i++) {
         vkBindImageMemory(device.logical_handle(), textures[i].image, memory, offset);
         textures[i].view = device.create_image_view(textures[i].image, textures[i].format, VK_IMAGE_ASPECT_COLOR_BIT);
-        
+
         std::string path = full_path(base_directory, texture_paths[i]);
         unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 4); // TODO deal with images with fewer channels
         if (data == NULL)

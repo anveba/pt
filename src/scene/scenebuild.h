@@ -10,6 +10,7 @@ class SceneBuilder
     ~SceneBuilder();
 
     void set_material_scene(Scene& scene, Camera& camera);
+    void read_scene_description(Scene& scene, Camera& camera, const std::string& path);
 
   private:
     NO_COPY(SceneBuilder);

@@ -35,6 +35,7 @@ class Scene
     inline const std::string& get_resource_directory() const { return resource_directory; }
 
     void from_file(const std::string& path, Camera& camera);
+    std::string scene_details();
 
   private:
     std::vector<ObjectVariant> object_variants;
@@ -45,10 +46,9 @@ class Scene
     std::string resource_directory;
 
     void clear();
+    bool check_valid();
 
     friend class SceneBuilder;
-
-    NO_COPY(Scene);
 };
 
 #endif
