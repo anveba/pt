@@ -71,7 +71,7 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
         if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness) != aiReturn_SUCCESS)
             roughness = 0.5f;
         if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission_colour) != aiReturn_SUCCESS) {
-            emission_colour = aiColor3D(1.0f, 1.0f, 1.0f);
+            emission_colour = aiColor3D(0.0f, 0.0f, 0.0f);
             includes_emission_data = false;
         }
         if (mat->Get(AI_MATKEY_SPECULAR_FACTOR, specular) != aiReturn_SUCCESS)

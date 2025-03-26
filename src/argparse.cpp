@@ -12,9 +12,9 @@ CommandLineParser::~CommandLineParser()
 {
 }
 
-static bool is_lowercase_letters_only(const std::string& str)
+static bool is_letters_only(const std::string& str)
 {
-    return str.find_first_not_of("abcdefghijklmnopqrstuvwxyz") == std::string::npos;
+    return str.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == std::string::npos;
 }
 
 void CommandLineParser::add_option(
@@ -27,9 +27,9 @@ void CommandLineParser::add_option(
         throw std::runtime_error("Option must start with two dashes followed by at least one character.");
     if ((short_option_name.size() != 2 || option_name[0] != '-') && !short_option_name.empty())
         throw std::runtime_error("Short name must start with one dashes followed by one character (or be empty).");
-    if (!is_lowercase_letters_only(option_name.substr(2)))
+    if (!is_letters_only(option_name.substr(2)))
         throw std::runtime_error("Option name must only contain lowercase letters.");
-    if (!short_option_name.empty() && !is_lowercase_letters_only(short_option_name.substr(1)))
+    if (!short_option_name.empty() && !is_letters_only(short_option_name.substr(1)))
         throw std::runtime_error("Option short name must only contain lowercase letters (or be empty).");
     if (option_indices.count(option_name) > 0)
         throw std::runtime_error("Option " + option_name + " is already added.");
@@ -48,11 +48,14 @@ void CommandLineParser::add_option(
 void CommandLineParser::parse(int argc, char** argv, std::vector<std::string>& non_options)
 {
     forget();
-
+    bool options_ended = false;
     for (int i = 1; i < argc; i++) {
         std::string token(argv[i]);
 
-        if (option_indices.count(token) > 0) {
+        if (!options_ended && token.size() >= 3 && token[0] == '-' && token[1] == '-') {
+            if (option_indices.count(token) == 0)
+                throw std::runtime_error("Unknown option " + token + ".");
+
             Option& a = options[option_indices[token]];
             if (a.option_type == OptionType::SWITCH) {
                 a.value = "true";
@@ -62,7 +65,10 @@ void CommandLineParser::parse(int argc, char** argv, std::vector<std::string>& n
                     throw std::runtime_error("Option " + token + " has no value.");
                 a.value = std::string(argv[i]);
             }
-        } else if (short_option_indices.count(token.substr(0, 2)) > 0) {
+        } else if (!options_ended && token.size() >= 2 && token[0] == '-' && token[1] != '-') {
+            if (short_option_indices.count(token.substr(0, 2)) == 0)
+                throw std::runtime_error("Unknown option " + token.substr(0, 2) + ".");
+
             Option& a = options[short_option_indices[token.substr(0, 2)]];
 
             if (a.option_type == OptionType::SWITCH) {
@@ -77,6 +83,8 @@ void CommandLineParser::parse(int argc, char** argv, std::vector<std::string>& n
             } else {
                 a.value = token.substr(2);
             }
+        } else if (token.size() == 2 && token[0] == '-' && token[1] == '-') {
+            options_ended = true;
         } else {
             non_options.push_back(token);
         }
