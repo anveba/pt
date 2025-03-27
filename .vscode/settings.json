@@ -70,6 +70,8 @@
         "variant": "cpp",
         "expected": "cpp",
         "format": "cpp",
-        "cassert": "cpp"
+        "cassert": "cpp",
+        "bitset": "cpp",
+        "regex": "cpp"
     }
 }

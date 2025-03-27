@@ -25,15 +25,22 @@ inline T round_up_to(T value, T alignment)
     return (value + alignment - 1) & ~(alignment - 1);
 }
 
-void transition_image_layout(
-    VkCommandBuffer command_buffer,
-    VkImage image,
-    VkImageLayout old_layout,
-    VkImageLayout new_layout,
-    VkAccessFlags src_access,
-    VkAccessFlags dst_access,
-    VkPipelineStageFlags src_stage,
-    VkPipelineStageFlags dst_stage,
-    const VkImageSubresourceRange& subresource_range);
+void transition_image_layout(VkCommandBuffer command_buffer,
+                             VkImage image,
+                             VkImageLayout old_layout,
+                             VkImageLayout new_layout,
+                             VkAccessFlags src_access,
+                             VkAccessFlags dst_access,
+                             VkPipelineStageFlags src_stage,
+                             VkPipelineStageFlags dst_stage,
+                             const VkImageSubresourceRange& subresource_range);
+
+void copy_image(VkCommandBuffer command_buffer,
+                VkImage src,
+                VkImageLayout src_layout,
+                VkImage dst,
+                VkImageLayout dst_layout,
+                uint32_t width,
+                uint32_t height);
 
 #endif

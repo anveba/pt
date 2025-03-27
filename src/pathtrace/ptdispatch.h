@@ -2,6 +2,7 @@
 #define PATHTRACE_PTDISPATCH_H_INCLUDED
 
 #include "graphics/fence.h"
+#include "io/imagewrite.h"
 #include "pathtrace.h"
 #include "postprocess/tonemap.h"
 #include "scene/scene.h"
@@ -11,9 +12,11 @@ struct PathTraceParameters
 {
     const Camera& camera;
     std::string out_path;
+    OutputImageFormat output_format;
 
     uint32_t samples;
     uint32_t max_bounces;
+    float render_time;
 };
 
 class PathTraceDispatcher
@@ -27,6 +30,12 @@ class PathTraceDispatcher
 
     void start(const PathTraceParameters& parameters);
 
+    void render(VkCommandBuffer& command_buffer,
+                const PathTraceParameters& parameters,
+                float& time_taken,
+                uint32_t& samples_taken);
+    void put_result(VkCommandBuffer& command_buffer, const PathTraceParameters& parameters);
+
   private:
     VulkanContext context;
     Device device;
@@ -36,7 +45,7 @@ class PathTraceDispatcher
     PathTracer path_tracer;
     ToneMapper tone_mapper;
 
-    Fence render_fence;
+    Fence fence;
 
     NO_COPY(PathTraceDispatcher);
 };

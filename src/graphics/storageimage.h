@@ -23,6 +23,7 @@ class StorageImage
     inline const VkDeviceMemory& get_memory() const { return memory; }
     inline const VkExtent2D& get_extent() const { return extent; }
     inline const VkFormat& get_format() const { return format; }
+    inline const VkImageLayout& get_layout() const { return layout; }
 
   private:
     Device& device;

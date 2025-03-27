@@ -22,6 +22,8 @@ int main(int argc, char** argv)
     parser.add_option("--samples", "-s", OptionType::INTEGER, "Number of samples to take.");
     parser.add_option("--bounces", "-b", OptionType::INTEGER, "Maximum number of ray bounces.");
     parser.add_option("--out", "-o", OptionType::STRING, "Specifies in which file to place the output.");
+    parser.add_option("--format", "-f", OptionType::STRING, "The image format of the output file.");
+    parser.add_option("--time", "-t", OptionType::DECIMAL, "The maximum rendering time.");
 
     std::vector<std::string> arguments;
     try {
@@ -50,13 +52,17 @@ int main(int argc, char** argv)
     }
 
     bool headless = parser.get_arg_as_switch("--headless");
-    uint32_t samples = parser.get_arg_as_integer("--samples").value_or(32);
-    if (samples == 0) {
-        std::cerr << "Error: Sample count was zero." << std::endl;
+    int samples = parser.get_arg_as_integer("--samples").value_or(32);
+    if (samples < 1) {
+        std::cerr << "Error: Invalid sample count: " << samples << "." << std::endl;
         return 1;
     }
 
-    uint32_t bounces = parser.get_arg_as_integer("--bounces").value_or(2);
+    int bounces = parser.get_arg_as_integer("--bounces").value_or(2);
+    if (bounces < 0) {
+        std::cerr << "Error: Invalid number of ray bounces: " << bounces << "." << std::endl;
+        return 1;
+    }
 
     std::optional<std::string> out = parser.get_arg_as_string("--out");
     if (headless && !out.has_value()) {
@@ -64,13 +70,21 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    uint32_t width = parser.get_arg_as_integer("--width").value_or(400);
-    uint32_t height = parser.get_arg_as_integer("--height").value_or(400);
-    if (width == 0 || height == 0) {
-        std::cerr << "Error: Invalid dimensions (" << std::to_string(width) << ", "
+    int width = parser.get_arg_as_integer("--width").value_or(400);
+    int height = parser.get_arg_as_integer("--height").value_or(400);
+    if (width < 1 || height < 1) {
+        std::cerr << "Error: Invalid dimensions: (" << std::to_string(width) << ", "
                   << std::to_string(height) << ")." << std::endl;
         return 1;
     }
+
+    OutputImageFormat output_format = image_format_from_string(parser.get_arg_as_string("--format").value_or("png"));
+    if (output_format == OutputImageFormat::NONE) {
+        std::cerr << "Error: Output format is invalid: " << parser.get_arg_as_string("--format").value() << std::endl;
+        return 1;
+    }
+
+    float render_time = parser.get_arg_as_decimal("--time").value_or(INFINITY);
 
     Camera camera(Vec3(0.0f, 0.0f, 0.0f),
                   Quaternion(1.0f, 0.0f, 0.0f, 0.0f),
@@ -93,8 +107,10 @@ int main(int argc, char** argv)
         PathTraceParameters params{
             .camera = camera,
             .out_path = out.value(),
-            .samples = samples,
-            .max_bounces = bounces,
+            .output_format = output_format,
+            .samples = static_cast<uint32_t>(samples),
+            .max_bounces = static_cast<uint32_t>(bounces),
+            .render_time = render_time
         };
         dispatcher.start(params);
     } else {

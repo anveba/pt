@@ -38,7 +38,7 @@ void PathTraceDisplayer::set_extent(uint32_t width, uint32_t height)
     intermediate_image.rebuild(command_pool, image_extent);
     tone_mapper.set_source_image(path_tracer.get_accumulation_image().get_view());
     tone_mapper.set_result_image(intermediate_image.get_view());
-    tone_mapper.set_extent(image_extent);
+    tone_mapper.set_parameters(image_extent.width, image_extent.height);
 
     destroy_framebuffers();
     create_framebuffers();

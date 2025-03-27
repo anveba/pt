@@ -5,6 +5,8 @@ RWTexture2D<float4> result_image : register(u1);
 struct UniformBufferObject {
     uint width;
     uint height;
+    uint src_is_srgb;
+    uint dst_is_srgb;
 };
 
 cbuffer ubo : register(b2) { UniformBufferObject ubo; };
@@ -51,12 +53,15 @@ float3 rrt_to_odt_fit(float3 v)
 
 float3 aces(float3 col)
 {
-    col = to_srgb(col);
+    if (!ubo.src_is_srgb)
+        col = to_srgb(col);
     col = mul(srgb_to_rrt_mat, col);
     col = rrt_to_odt_fit(col);
     col = mul(odt_to_srgb_mat, col);
+    if (!ubo.dst_is_srgb)
+        col = from_srgb(col);
 
-    return saturate(from_srgb(col));
+    return saturate(col);
 }
 
 [numthreads(16, 16, 1)] 

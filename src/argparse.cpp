@@ -1,5 +1,6 @@
 #include "argparse.h"
 #include <cassert>
+#include <regex>
 #include <sstream>
 #include <stdexcept>
 
@@ -15,6 +16,18 @@ CommandLineParser::~CommandLineParser()
 static bool is_letters_only(const std::string& str)
 {
     return str.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == std::string::npos;
+}
+
+static bool is_integer(const std::string& str)
+{
+    std::regex r("[\\-\\+]?[0-9]+");
+    return std::regex_match(str, r);
+}
+
+static bool is_decimal(const std::string& str)
+{
+    std::regex r("[\\-\\+]?[0-9]+(\\.[0-9]*)?");
+    return std::regex_match(str, r);
 }
 
 void CommandLineParser::add_option(
@@ -131,11 +144,10 @@ std::optional<int> CommandLineParser::get_arg_as_integer(const std::string& opti
         throw std::runtime_error("Option type mismatch. Expected integer.");
 
     if (option.value.has_value()) {
-        try {
+        if (is_integer(option.value.value()))
             return std::stoi(option.value.value());
-        } catch (const std::exception&) {
+        else
             throw std::runtime_error("The value of option " + option_name + " was not an integer: " + option.value.value());
-        }
     } else {
         return std::nullopt;
     }
@@ -150,11 +162,10 @@ std::optional<float> CommandLineParser::get_arg_as_decimal(const std::string& op
         throw std::runtime_error("Option type mismatch. Expected decimal.");
 
     if (option.value.has_value()) {
-        try {
+        if (is_decimal(option.value.value()))
             return std::stof(option.value.value());
-        } catch (const std::exception&) {
+        else
             throw std::runtime_error("The value of option " + option_name + " was not a decimal number: " + option.value.value());
-        }
     } else {
         return std::nullopt;
     }

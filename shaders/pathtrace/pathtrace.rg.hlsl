@@ -46,6 +46,10 @@ void main()
             uint i;
             for (i = 0; i < ubo.max_bounces; i++) {
 
+                // const float termination_probability = 1.0 / dot(throughput, throughput);
+                // if (hybrid_taus(payload.rng_state) < termination_probability)
+                //     break;
+
                 ray_desc.Origin = ray_desc.Origin + payload.incoming_direction.w * ray_desc.Direction;
                 ray_desc.Direction = payload.incoming_direction.xyz;
 
