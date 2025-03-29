@@ -194,7 +194,11 @@ void Scene::from_file(const std::string& path, Camera& camera)
         aiProcess_Triangulate |
             aiProcess_FlipUVs |
             aiProcess_GenNormals |
-            aiProcess_JoinIdenticalVertices); // TODO: take a look at post processing steps
+            aiProcess_JoinIdenticalVertices |
+            aiProcess_RemoveRedundantMaterials |
+            aiProcess_FindInstances |
+            aiProcess_OptimizeMeshes |
+            aiProcess_OptimizeGraph);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         std::runtime_error("Could not load scene at " + path + ": " + importer.GetErrorString());

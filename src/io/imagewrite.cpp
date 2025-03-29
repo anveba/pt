@@ -12,7 +12,7 @@ OutputImageFormat image_format_from_string(const std::string& str)
     if (str == "hdr" || str == "HDR")
         return OutputImageFormat::HDR;
     else
-        throw OutputImageFormat::NONE;
+        return OutputImageFormat::NONE;
 }
 
 void write_hdr(const uint8_t* map, const std::string& out_path, uint32_t width, uint32_t height, uint32_t row_pitch)

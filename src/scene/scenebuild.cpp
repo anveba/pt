@@ -279,8 +279,12 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
         // Add all materials
         scene.materials.insert(scene.materials.end(), loaded_scene.materials.begin(), loaded_scene.materials.end());
         for (size_t i = mat_offset; i < scene.materials.size(); i++) {
-            scene.materials[i].col_emi_rgh_spec_maps += Vec4(tex_offset);
-            scene.materials[i].shn_clcoat_metal_norm_maps += Vec4(tex_offset);
+            for (int j = 0; j < 4; j++) {
+                if (scene.materials[i].col_emi_rgh_spec_maps[j] < UINT32_MAX)
+                    scene.materials[i].col_emi_rgh_spec_maps[j] += tex_offset;
+                if (scene.materials[i].shn_clcoat_metal_norm_maps[j] < UINT32_MAX)
+                    scene.materials[i].shn_clcoat_metal_norm_maps[j] += tex_offset;
+            }
         }
 
         // Add all textures

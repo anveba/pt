@@ -12,14 +12,15 @@ void main()
 
     uint dispatch_seed = (id.x << 16) | (id.y & 0x0000FFFF);
     RayPayload payload;
-    payload.rng_state = get_seed(uint4(dispatch_seed + 0, dispatch_seed + 1, dispatch_seed + 2, dispatch_seed + 3), ubo.seed);
+    //TODO set better seeds
+    seed(payload.rng, uint4(dispatch_seed + 0, dispatch_seed + 1, dispatch_seed + 2, dispatch_seed + 3), ubo.seed);
     
     float3 radiance_sum = float3(0.0, 0.0, 0.0);
 
     for (uint i = 0; i < ubo.samples; i++) {
 
-        float offset_x = hybrid_taus(payload.rng_state);
-        float offset_y = hybrid_taus(payload.rng_state);
+        float offset_x = next_float(payload.rng);
+        float offset_y = next_float(payload.rng);
 
         const float2 film_position = float2(id.xy) + float2(offset_x, offset_y);
         const float2 norm_coords = (film_position / float2(size.xy)) * 2.0 - 1.0;
