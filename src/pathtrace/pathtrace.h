@@ -15,6 +15,7 @@
 
 struct PathTraceUniformData
 {
+    alignas(16) Vec3 environment_colour;
     alignas(16) Mat4 inv_view;
     alignas(16) Mat4 inv_proj;
     alignas(4) float near;

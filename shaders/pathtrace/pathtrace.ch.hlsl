@@ -1,4 +1,8 @@
 #include "pathtrace.hlsli"
+#include "util.hlsli"
+#include "sample.hlsli"
+#include "material.hlsli"
+#include "geometry.hlsli"
 
 RaytracingAccelerationStructure bvh : register(t0);
 RWTexture2D<float4> dest_image : register(u1);
@@ -21,10 +25,6 @@ uint3 get_index(uint i) {
     return uint3(index_buffer[i + 0], index_buffer[i + 1], index_buffer[i + 2]);
 }
 
-bool has_texture(uint i) {
-    return i < 4294967295;
-}
-
 Vertex get_vertex(uint i) {
     float4 v0 = vertex_buffer[i * 2 + 0];
     float4 v1 = vertex_buffer[i * 2 + 1];
@@ -36,37 +36,50 @@ Vertex get_vertex(uint i) {
     return v;
 }
 
+void get_emission(in PbrMaterial material, in float2 uv, out float3 emission) {
+    if (map_bits(material) & EMISSION_MAP_BIT)
+        emission = textures[asuint(material.emission.x)].SampleLevel(texture_sampler, uv, 0).rgb;
+    else
+        emission = material.emission.rgb;
+    emission *= material.emission.a;
+}
+
+void get_base_colour(in PbrMaterial material, in float2 uv, out float4 base_colour) {
+    if (map_bits(material) & BASE_COLOUR_MAP_BIT)
+        base_colour = textures[asuint(material.base_colour.x)].SampleLevel(texture_sampler, uv, 0);
+    else
+        base_colour = material.base_colour;
+}
+
+void get_roughness_metalness_normal(
+    in PbrMaterial material, in float2 uv, 
+    out float roughness, out float metalness, out float3 normal) 
+{
+    if (map_bits(material) & ROUGHNESS_METALNESS_MAP_BIT) {
+        float4 t = textures[asuint(material.rough_metal_normal_map_bits.x)].SampleLevel(texture_sampler, uv, 0);
+        roughness = t.g;
+        metalness = t.b;
+    } else {
+        if (map_bits(material) & ROUGHNESS_MAP_BIT)
+            roughness = textures[asuint(material.rough_metal_normal_map_bits.x)].SampleLevel(texture_sampler, uv, 0).r;
+        else
+            roughness = material.rough_metal_normal_map_bits.x;
+
+        if (map_bits(material) & METALNESS_MAP_BIT) 
+            metalness = textures[asuint(material.rough_metal_normal_map_bits.y)].SampleLevel(texture_sampler, uv, 0).r;
+        else
+            metalness = material.rough_metal_normal_map_bits.y;
+    }
+
+    if (map_bits(material) & NORMAL_MAP_BIT)
+        normal = normalize(textures[asuint(material.rough_metal_normal_map_bits.z)].SampleLevel(texture_sampler, uv, 0).xyz * 2.0 - 1.0);
+    else
+        normal = float3(0.0, 0.0, 1.0);
+}
+
 float3 fresnel_schlick(float cos_d, float3 f0) {
     float base = 1.0 - cos_d;
     return f0 + (1.0 - f0) * base * base * base * base * base;
-}
-
-float sq(float x) {
-    return x * x;
-}
-
-float cos_theta(float3 v) {
-    return v.z;
-}
-
-float cos2_theta(float3 v) {
-    return sq(cos_theta(v));
-}
-
-float sin2_theta(float3 v) {
-    return max(0.0, 1.0 - cos2_theta(v));
-}
-
-float sin_theta(float3 v) {
-    return sqrt(sin2_theta(v));
-}
-
-float tan_theta(float3 v) {
-    return sin_theta(v) / cos_theta(v);
-}
-
-float tan2_theta(float3 v) {
-    return sin2_theta(v) / cos2_theta(v);
 }
 
 float lambda(float3 m, float2 alpha) {
@@ -107,70 +120,46 @@ float3 diffuse_fresnel(float3 fd90, float cos_theta) {
     return 1.0 + (fd90 - 1.0) * base * base * base * base * base;
 }
 
-// https://graphics.pixar.com/library/OrthonormalB/paper.pdf
-void onb(const in float3 n, out float3 x, out float3 y) {
-    const float s = n.z < 0 ? -1 : 1;
-    const float a = -1.0f / (s + n.z);
-    const float b = n.x * n.y * a;
-    x = float3(1.0f + s * n.x * n.x * a, s * b, -s * n.x);
-    y = float3(b, s + n.y * n.y * a, -n.y);
+void no_scatter(inout RayPayload payload) {
+    payload.throughput = float4(0.0, 0.0, 0.0, INFINITY);
 }
 
-// https://hal.science/hal-01509746/document
-// Assumes v.z is positive
-float3 sample_visible_micronormal(float3 v, float2 alpha, inout Rng rng) {
-
-    v = normalize(float3(alpha.x * v.x, alpha.y * v.y, v.z));
-
-    float3 x = (v.z < 0.99999) ? normalize(cross(float3(0.0, 0.0, 1.0), v)) : float3(1.0, 0.0, 0.0);
-    float3 y = cross(v, x);
-
-    float u1 = next_float(rng);
-    float u2 = next_float(rng);
-
-    float a = 1.0 / (1.0 + v.z);
-    float r = sqrt(u1);
-    float phi = (u2 < a) ? u2 / a * PI : PI + (u2 - a) / (1.0 - a) * PI;
-    float p1 = r * cos(phi);
-    float p2 = r * sin(phi) * ((u2 < a) ? 1.0 : v.z);
-
-    float3 m = p1 * x + p2 * y + sqrt(max(0.0, 1.0 - p1 * p1 - p2 * p2)) * v;
-    return normalize(float3(alpha.x * m.x, alpha.y * m.y, max(1e-6, m.z)));
-
-    // float2 p = uniform_sample_disk(rng_state);
-    // p = 0;
-
-    // float h = sqrt(1.0 - p.x * p.x);
-    // p.y = lerp((1.0 + v.z) / 2.0, h, p.y);
-
-    // float p_z = sqrt(max(0.0, 1.0 - dot(p, p)));
-    // float3 nh = p.x * x + p.y * y + p_z * v;
-    
-    // return normalize(float3(alpha.x * nh.x, alpha.y * nh.y, max(1e-6, nh.z)));
+float diffuse_weight() {
+    return 0.5; // TODO (also deal with metals)
 }
 
-float3 sample_micronormal(float3 v, float2 alpha, inout Rng rng) {
+float3 sample_direction(float3 o, float2 alpha, inout Rng rng, out float3 m, out float w, out float d, out float pdf) {
+    float3 i;
+    float p = diffuse_weight();
+    bool sample_diffuse = next_float(rng) < p;
+    if (sample_diffuse) {
+        i = cosine_weighted_rand_dir(rng);
+        m = normalize(o + i);
+    } else {
+        m = sample_visible_micronormal(o, alpha, rng);
+        i = 2.0 * dot(o, m) * m - o;
+    }
 
-    float phi = 2.0 * PI * next_float(rng);
-    float u = next_float(rng);
-    float l = sqrt(u / (1.0 - u));
-    float x = alpha.x * cos(phi) * l;
-    float y = alpha.y * sin(phi) * l;
+    d = distribution(m, alpha);
+    float cos_d = dot(m, o);
 
-    return normalize(float3(x, y, 1));
-}
+    float pdf_m = (g1(o, alpha) / abs(cos_theta(o))) * d * abs(cos_d);
+    float pdf_gtr = pdf_m / (4.0 * abs(cos_d)); //Due to the reflection transformation
 
-void no_scatter(inout RayPayload payload, float3 emission) {
-    payload.brdf = float4(0.0, 0.0, 0.0, 0.0);
-    payload.emission = emission;
-    payload.incoming_direction = float4(0.0, 0.0, 0.0, INFINITY);
+    float pdf_cos = cos_theta(i) / PI;
+
+    // https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/readings/veach.pdf
+
+    pdf = sample_diffuse ? (pdf_cos * p) : (pdf_gtr * (1.0 - p));
+    float other_pdf = sample_diffuse ? (pdf_gtr * (1.0 - p)) : (pdf_cos * p) ;
+    w = power_heuristic(pdf, other_pdf); // TODO compare heuristics
+
+    return i;
 }
 
 [shader("closesthit")]
 void main(inout RayPayload payload, in Attributes attributes)
 {
-    //TODO only check emission for final bounces
-
     InstanceData instance_data = get_instance_data(InstanceID());
     PbrMaterial material = get_material(instance_data.material_index);
     uint3 indices = get_index(instance_data.index_index + PrimitiveIndex() * 3);
@@ -179,90 +168,90 @@ void main(inout RayPayload payload, in Attributes attributes)
     Vertex v_b = get_vertex(instance_data.vertex_index + indices.y);
     Vertex v_c = get_vertex(instance_data.vertex_index + indices.z);
 
-    float bary_alpha = 1.0f - attributes.barycentric.x - attributes.barycentric.y;
-    float bary_beta = attributes.barycentric.x;
-    float bary_gamma = attributes.barycentric.y;
-    float3 obj_space_normal = normalize(bary_alpha * v_a.normal + bary_beta * v_b.normal + bary_gamma * v_c.normal);
-    float2 uv = bary_alpha * v_a.uv + bary_beta * v_b.uv + bary_gamma * v_c.uv;
+    float3 obj_space_normal;
+    float2 uv;
+    get_vertex_attributes(attributes.barycentric, v_a, v_b, v_c, obj_space_normal, uv);
 
-    float3 base_colour, emission;
-    float roughness, metalness;
-    if (has_texture(material.col_emi_rgh_spec_maps.x)) {
+    get_emission(material, uv, payload.emission.rgb);
+    if (is_final_bounce(payload)) 
+        return;
 
-        float4 all_channels = textures[material.col_emi_rgh_spec_maps.x].SampleLevel(texture_sampler, uv, 0);
+    float4 base_colour;
+    get_base_colour(material, uv, base_colour);
 
-        // Check transparency
-        if (next_float(payload.rng) >= all_channels.a) {
-            payload.brdf = 1.0;
-            payload.emission = 0.0;
-            payload.incoming_direction = float4(WorldRayDirection(), RayTCurrent());
-            return;
-        }
-
-        base_colour = all_channels.rgb;
+    // Check transparency
+    if (next_float(payload.rng) >= base_colour.a) {
+        payload.throughput = float4(1.0, 1.0, 1.0, RayTCurrent());
+        payload.intersection = WorldRayOrigin() + WorldRayDirection() * (RayTCurrent() + ORIGIN_OFFSET);
+        payload.incoming_direction = WorldRayDirection();
+        return;
     }
-    else
-        base_colour = material.base_colour.rgb;
 
-    if (has_texture(material.col_emi_rgh_spec_maps.y))
-        emission = textures[material.col_emi_rgh_spec_maps.y].SampleLevel(texture_sampler, uv, 0).rgb * material.emission.a;
-    else
-        emission = material.emission.rgb * material.emission.a;
+    float roughness, metalness;
+    float3 mapped_normal;
+    get_roughness_metalness_normal(material, uv, roughness, metalness, mapped_normal);
 
-    if (has_texture(material.col_emi_rgh_spec_maps.z))
-        roughness = textures[material.col_emi_rgh_spec_maps.z].SampleLevel(texture_sampler, uv, 0).r;
-    else
-        roughness = material.base_colour.a;
+    float anisotropy = 0.0;
 
-    if (has_texture(material.shn_clcoat_metal_norm_maps.z))
-        metalness = textures[material.shn_clcoat_metal_norm_maps.z].SampleLevel(texture_sampler, uv, 0).r;
-    else
-        metalness = material.metalness_anisotropy.r;
-
-    float3 f0 = lerp(0.05, base_colour, metalness);
+    float3 f0 = lerp(0.05, base_colour.rgb, metalness);
     roughness = max(0.00001, roughness * roughness);
-    float2 material_alpha = float2(roughness, roughness);
+    float aspect = sqrt(1.0 - 0.9 * abs(anisotropy));
+    float2 material_alpha = float2(roughness / aspect, roughness * aspect); // Clamp?
+    if (anisotropy < 0.0)
+        material_alpha = float2(material_alpha.y, material_alpha.x);
 
-    float3 world_normal = mul((float3x3)WorldToObject4x3(), obj_space_normal); // TODO investigate performance of WorldToObject4x3()
-    if (dot(world_normal, WorldRayDirection()) > 0.0)
+    float3 obj_space_x, obj_space_y, true_obj_space_normal;
+    get_vertex_vectors(v_a, v_b, v_c, obj_space_normal, uv, obj_space_x, obj_space_y, true_obj_space_normal);
+
+    float3x3 obj_to_world = (float3x3)WorldToObject4x3(); // TODO look into performance of WorldToObject4x3()
+
+    float3 world_x = mul(obj_to_world, obj_space_x);
+    float3 world_y = mul(obj_to_world, obj_space_y);
+    float3 world_normal = mul(obj_to_world, obj_space_normal);
+    if (dot(world_normal, WorldRayDirection()) > 0.0) {
+        world_x = -world_x;
+        world_y = -world_y;
         world_normal = -world_normal;
-    
-    float3 x, y;
-    onb(world_normal, x, y);
+    }
 
-    float3x3 from_world_space = float3x3(x, y, world_normal);
+    float3 true_world_normal = mul(obj_to_world, true_obj_space_normal);
+    if (dot(WorldRayDirection(), true_world_normal) > 0.0)
+        true_world_normal = -true_world_normal;
+    
+    float3 mapped_x, mapped_y;
+    onb(mapped_normal, mapped_x, mapped_y);
+
+    float3x3 from_world_space = mul(float3x3(mapped_x, mapped_y, mapped_normal), float3x3(world_x, world_y, world_normal));
     float3x3 to_world_space = transpose(from_world_space);
 
     float3 o = normalize(mul(from_world_space, -WorldRayDirection()));
     if (o.z <= 0.0) { // May happen due to normal and true normal mismatch
-        no_scatter(payload, emission);
+        no_scatter(payload);
         return;
     }
 
-    float3 m = sample_visible_micronormal(o, material_alpha, payload.rng);
-    float3 i = 2.0 * dot(o, m) * m - o;
+    float3 m;
+    float w, d, pdf;
+    float3 i = sample_direction(o, material_alpha, payload.rng, m, w, d, pdf);
 
     if (i.z * o.z <= 0.0) {
-        no_scatter(payload, emission);
+        no_scatter(payload);
         return;
     }
 
     float cos_d = dot(m, o);
 
-    float d = distribution(m, material_alpha);
     float3 f = fresnel_schlick(cos_d, f0);
     float g = masking(o, i, material_alpha);
 
     float3 specular = (d * f * g) / (4.0 * cos_theta(i) * cos_theta(o));
 
     float f_d90 = 0.5 + 2.0 * roughness * cos_d * cos_d;
-    float3 diffuse = (1.0 - metalness) * base_colour / PI * diffuse_fresnel(f_d90, cos_theta(i)) * diffuse_fresnel(f_d90, cos_theta(o));
+    float3 diffuse = (1.0 - metalness) * base_colour.rgb / PI * (1.0 - f);// * diffuse_fresnel(f_d90, cos_theta(i)) * diffuse_fresnel(f_d90, cos_theta(o));
     
     // float pdf = d * cos_theta(m);
-    float pdf = (g1(o, material_alpha) / abs(cos_theta(o))) * d * abs(cos_d);
-    pdf = pdf / (4.0 * abs(cos_d)); //Due to the reflection transformation
 
-    payload.brdf = float4((specular + diffuse) * cos_theta(i), pdf);
-    payload.emission = emission;
-    payload.incoming_direction = float4(mul(to_world_space, i), RayTCurrent());
+    payload.throughput = float4(w * (specular + diffuse) * cos_theta(i) / pdf, RayTCurrent());
+    payload.intersection = WorldRayOrigin() + WorldRayDirection() * RayTCurrent() + true_world_normal * ORIGIN_OFFSET;
+    payload.incoming_direction = mul(to_world_space, i);
 }

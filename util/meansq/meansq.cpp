@@ -13,6 +13,7 @@ int main(int argc, char** argv)
 
     int ref_width, ref_height, ref_comp;
     float* reference = stbi_loadf(argv[1], &ref_width, &ref_height, &ref_comp, 4);
+    std::cout << "Reference: " << argv[1] << std::endl;
 
     for (int image_idx = 2; image_idx < argc; image_idx++) {
 
@@ -21,23 +22,23 @@ int main(int argc, char** argv)
 
         if (image == NULL) {
             std::cerr << "Error: Could not read " << argv[image_idx] << ": " << stbi_failure_reason() << std::endl;
-            return 1;
+            continue;
         }
 
         if (width != ref_width || height != ref_height || comp != ref_comp) {
             std::cerr << "Error: Image at " << argv[image_idx] << " has dimensions and channel number incompatible"
                       << " with the reference." << std::endl;
-            return 1;
+            continue;
         }
 
         double sse = 0;
 
-        for (size_t i = 0; i < width * height; i++) {
+        for (size_t i = 0; i < width * height * comp; i++) {
             double error = image[i] - reference[i];
             sse += error * error;
         }
 
-        double mse = sse / (width * height);
+        double mse = sse / (width * height * comp);
 
         std::cout << argv[image_idx] << "\tMSE: " << mse << std::endl;
 

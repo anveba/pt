@@ -35,13 +35,9 @@ struct SceneParserState
 {
     SceneParserState(const std::string data_dir)
         : data_dir(data_dir)
+        , current_transform(1.0f)
+        , environment_colour(0.0f)
     {
-        current_object = std::nullopt;
-        current_transform = Mat4(1.0f);
-        subscenes = std::vector<Subscene>();
-        subscene_indices = std::unordered_map<std::string, uint32_t>();
-        lights = std::vector<PointLight>();
-        camera = std::nullopt;
     }
 
     SceneParserState(SceneParserState const&) = delete;
@@ -57,10 +53,45 @@ struct SceneParserState
     std::vector<Subscene> subscenes;
     std::unordered_map<std::string, uint32_t> subscene_indices;
 
-    std::vector<PointLight> lights;
+    std::vector<PointLight> point_lights;
+    std::vector<DirectionalLight> directional_lights;
 
     std::optional<Camera> camera;
+    Vec3 environment_colour;
+    std::string environment_map_path;
 };
+
+static void parse_point_light(TokenStream& tokens,
+                              SceneParserState& state)
+{
+    if (tokens.size() - tokens.current_index() != 7)
+        throw std::runtime_error("Invalid light syntax.");
+
+    Vec3 pos = parse_vector(tokens);
+
+    if (tokens.next() != ",")
+        throw std::runtime_error("Invalid light syntax.");
+
+    Vec3 col = parse_vector(tokens);
+
+    state.point_lights.push_back(PointLight(pos, col));
+}
+
+static void parse_directional_light(TokenStream& tokens,
+                                    SceneParserState& state)
+{
+    if (tokens.size() - tokens.current_index() != 7)
+        throw std::runtime_error("Invalid light syntax.");
+
+    Vec3 dir = parse_vector(tokens);
+
+    if (tokens.next() != ",")
+        throw std::runtime_error("Invalid light syntax");
+
+    Vec3 col = parse_vector(tokens);
+
+    state.directional_lights.push_back(DirectionalLight(dir, col));
+}
 
 // Assumes identifier is consumed in stream.
 static void parse_identifier(const std::string& identifier,
@@ -70,7 +101,7 @@ static void parse_identifier(const std::string& identifier,
     // Identifier alone on a line means a new instance is being created.
     if (tokens.done()) {
         if (!state.subscene_indices.count(identifier))
-            throw std::runtime_error("Object " + identifier + " not recognised");
+            throw std::runtime_error("Object " + identifier + " not recognised.");
 
         // If this is not the first instance in the file, we
         // finialise the previous instance
@@ -100,6 +131,9 @@ static bool is_section_label(const std::string& token)
 // Parses the camera section
 static void parse_camera(TokenStream& lines, SceneParserState& state)
 {
+    if (state.camera)
+        throw std::runtime_error("Camera already set.");
+
     // Default camera values
     Vec3 position(0.0f);
     Vec3 look_dir(0.0f, 0.0f, -1.0f);
@@ -126,6 +160,10 @@ static void parse_camera(TokenStream& lines, SceneParserState& state)
             near = std::stof(tokens.next());
         } else if (tok == "far") {
             far = std::stof(tokens.next());
+        } else if (tok == "envcol") {
+            state.environment_colour = parse_vector(tokens);
+        } else if (tok == "envmap") {
+            state.environment_map_path = tokens.next();
         } else if (is_section_label(tok)) {
             // New section has started, so we exit.
             lines.rollback(1);
@@ -160,32 +198,36 @@ static void parse_objects(TokenStream& lines, SceneParserState& state)
 
         if (tok == "t") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to translate");
+                throw std::runtime_error("No instance to translate.");
             state.current_transform = parse_translation(tokens) * state.current_transform;
         } else if (tok == "r") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to rotate");
+                throw std::runtime_error("No instance to rotate.");
             state.current_transform = parse_rotation(tokens) * state.current_transform;
         } else if (tok == "s") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to scale");
+                throw std::runtime_error("No instance to scale.");
             state.current_transform = parse_scaling(tokens) * state.current_transform;
         } else if (tok == "basecol") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to apply base colour parameter to");
+                throw std::runtime_error("No instance to apply base colour parameter to.");
             // TODO
         } else if (tok == "roughness") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to apply roughness parameter to");
+                throw std::runtime_error("No instance to apply roughness parameter to.");
             // TODO
         } else if (tok == "metalness") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to apply metalness parameter to");
+                throw std::runtime_error("No instance to apply metalness parameter to.");
             // TODO
         } else if (tok == "specular") {
             if (!state.current_object.has_value())
-                throw std::runtime_error("No instance to apply specular parameter to");
+                throw std::runtime_error("No instance to apply specular parameter to.");
             // TODO
+        } else if (tok == "plight") {
+            parse_point_light(tokens, state);
+        } else if (tok == "dlight") {
+            parse_directional_light(tokens, state);
         } else if (is_section_label(tok)) {
             // New section has started, so we exit.
             lines.rollback(1);
@@ -239,9 +281,11 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
     parse_sections(lines, state);
 
     if (!state.camera.has_value())
-        throw std::runtime_error("No camera section in scene description");
+        throw std::runtime_error("No camera section in scene description.");
 
     camera = state.camera.value();
+    scene.environment_colour = state.environment_colour;
+    scene.environment_map_path = state.environment_map_path;
 
     Camera dummy_camera(Vec3(0.0f), Quaternion(), 45.0f, 1.0f, 0.1f, 10000.0f); // TODO remove
 
@@ -278,21 +322,14 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
 
         // Add all materials
         scene.materials.insert(scene.materials.end(), loaded_scene.materials.begin(), loaded_scene.materials.end());
-        for (size_t i = mat_offset; i < scene.materials.size(); i++) {
-            for (int j = 0; j < 4; j++) {
-                if (scene.materials[i].col_emi_rgh_spec_maps[j] < UINT32_MAX)
-                    scene.materials[i].col_emi_rgh_spec_maps[j] += tex_offset;
-                if (scene.materials[i].shn_clcoat_metal_norm_maps[j] < UINT32_MAX)
-                    scene.materials[i].shn_clcoat_metal_norm_maps[j] += tex_offset;
-            }
-        }
+        for (size_t i = mat_offset; i < scene.materials.size(); i++)
+            scene.materials[i].offset_maps_by(static_cast<uint32_t>(tex_offset));
 
         // Add all textures
         std::string subscene_relative_resource_directory = directory_of(subscene.path);
         scene.texture_paths.insert(scene.texture_paths.end(), loaded_scene.texture_paths.begin(), loaded_scene.texture_paths.end());
-        for (size_t i = tex_offset; i < scene.texture_paths.size(); i++) {
+        for (size_t i = tex_offset; i < scene.texture_paths.size(); i++)
             scene.texture_paths[i] = subscene_relative_resource_directory + scene.texture_paths[i];
-        }
     }
 
     assert(scene.check_valid());

@@ -20,7 +20,7 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
     // TODO VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR depends on whether it is recursive
     VkDescriptorSetLayoutBinding acceleration_structure_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-    VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+    VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR);
     VkDescriptorSetLayoutBinding vertex_binding = DescriptorSetLayout::create_layout_binding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding index_binding = DescriptorSetLayout::create_layout_binding(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
@@ -70,8 +70,10 @@ PathTracer::PathTracer(
     , descriptor_set(descriptor_pool, descriptor_set_layout)
     , samples_taken(0)
 {
-    Splitmix32 sm(1);
+    Splitmix32 sm(static_cast<uint32_t>(clock()));
     rng = Xshiro128(sm.next(), sm.next(), sm.next(), sm.next());
+
+    uniform_data.environment_colour = scene.get_environment_colour();
 
     create_pipeline();
     create_shader_binding_tables();
@@ -252,6 +254,7 @@ void PathTracer::set_scene(CommandPool& command_pool, const Scene& scene)
     scene_buffer.rebuild(command_pool, scene);
     scene_textures.rebuild(command_pool, scene);
     acceleration_structure.rebuild(command_pool, scene, scene_buffer);
+    uniform_data.environment_colour = scene.get_environment_colour();
 
     update_descriptor_sets();
 }

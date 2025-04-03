@@ -3,11 +3,11 @@
 
 #include "rng.hlsli"
 
-#define PI (3.141592654)
-#define INFINITY (1.0 / 0.0)
+#define ORIGIN_OFFSET (1e-5)
 
 struct UniformBufferObject
 {
+    float4 environment_colour;
     float4x4 inv_view;
     float4x4 inv_proj;
     float near;
@@ -19,29 +19,6 @@ struct UniformBufferObject
     uint max_bounces;
 };
 
-struct PbrMaterial {
-    float4 base_colour;
-    float4 emission;
-    float4 specular;
-    float4 sheen;
-    float4 clearcoat;
-    float4 metalness_anisotropy;
-    uint4 col_emi_rgh_spec_maps;
-    uint4 shn_clcoat_metal_norm_maps;
-};
-
-struct InstanceData {
-    uint vertex_index;
-    uint index_index;
-    uint material_index;
-};
-
-struct Vertex {
-    float3 position;
-    float3 normal;
-    float2 uv;
-};
-
 struct Attributes
 {
     float2 barycentric;
@@ -49,10 +26,20 @@ struct Attributes
 
 struct RayPayload
 {
-    [[vk::location(0)]] float4 brdf; // w component is pdf. The cosine term is baked in.
+    // On input, the w-component is 1 on the final bounce, else 0. On output, it is the distance.
+    [[vk::location(0)]] float4 throughput; 
     [[vk::location(1)]] float3 emission;
     [[vk::location(2)]] Rng rng;
-    [[vk::location(3)]] float4 incoming_direction; // w component is distance
+    [[vk::location(3)]] float3 intersection;
+    [[vk::location(4)]] float3 incoming_direction;
 };
+
+bool is_final_bounce(in RayPayload payload) {
+    return payload.throughput.w != 0.0;
+}
+
+void set_final_bounce(inout RayPayload payload, bool b) {
+    payload.throughput.w = b ? 1.0 : 0.0;
+}
 
 #endif

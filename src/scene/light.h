@@ -7,7 +7,7 @@
 class PointLight
 {
   public:
-    PointLight(const Vec3& position, const Colour& colour)
+    PointLight(const Vec3& position, const Vec3& colour)
         : pos(position)
         , col(colour)
     {
@@ -15,12 +15,34 @@ class PointLight
 
     Vec3& position() { return pos; }
     const Vec3& position() const { return pos; }
-    Colour& colour() { return col; }
-    const Colour& colour() const { return col; }
+    Vec3& colour() { return col; }
+    const Vec3& colour() const { return col; }
+    float power() const { return std::max(std::max(col.x, col.y), col.z); }
 
   private:
     Vec3 pos;
-    Colour col;
+    Vec3 col;
 };
+
+class DirectionalLight
+{
+  public:
+    DirectionalLight(const Vec3& direction, const Vec3& colour)
+        : dir(direction)
+        , col(colour)
+    {
+    }
+
+    Vec3& direction() { return dir; }
+    const Vec3& direction() const { return dir; }
+    Vec3& colour() { return col; }
+    const Vec3& colour() const { return col; }
+    float power() const { return std::max(std::max(col.x, col.y), col.z); }
+
+  private:
+    Vec3 dir;
+    Vec3 col;
+};
+
 
 #endif
