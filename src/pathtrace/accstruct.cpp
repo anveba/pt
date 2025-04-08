@@ -66,9 +66,9 @@ static void create_acceleration_structure(
     vkDestroyBuffer(device.logical_handle(), scratch_buffer, nullptr);
 }
 
-void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer)
+void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& scene, const SceneBuffer& scene_buffer)
 {
-    const size_t blas_count = scene.get_object_variants().size();
+    const size_t blas_count = scene.get_meshes().size();
 
     std::vector<VkAccelerationStructureGeometryKHR> geometries;
     std::vector<VkAccelerationStructureBuildRangeInfoKHR> range_infos;
@@ -85,7 +85,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& 
 
     for (size_t i = 0; i < blas_count; i++) {
 
-        const ObjectVariant& object = scene.get_object_variants()[i];
+        const Mesh& mesh = scene.get_meshes()[i];
         const BufferIndices& start_indices = scene_buffer.get_start_indices(i);
 
         VkDeviceOrHostAddressConstKHR vertex_address_const{
@@ -103,7 +103,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& 
         geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
         geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
         geometry.geometry.triangles.vertexData = vertex_address_const;
-        geometry.geometry.triangles.maxVertex = object.mesh.get_vertices().size() - 1;
+        geometry.geometry.triangles.maxVertex = mesh.get_vertices().size() - 1;
         geometry.geometry.triangles.vertexStride = sizeof(Vertex);
         geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
         geometry.geometry.triangles.indexData = index_address_const;
@@ -111,7 +111,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& 
 
         VkAccelerationStructureBuildRangeInfoKHR& range = range_infos[i];
         range = {};
-        range.primitiveCount = object.mesh.get_indexed_triangles().size();
+        range.primitiveCount = mesh.get_indexed_triangles().size();
         range.primitiveOffset = 0;
         range.firstVertex = 0;
         range.transformOffset = 0;
@@ -124,7 +124,7 @@ void AccelerationStructure::create_blas(CommandPool& command_pool, const Scene& 
         acceleration_structure_build_geometry_info.geometryCount = 1;
         acceleration_structure_build_geometry_info.pGeometries = &geometry;
 
-        const uint32_t max_primitive_count = static_cast<uint32_t>(object.mesh.get_indexed_triangles().size());
+        const uint32_t max_primitive_count = static_cast<uint32_t>(mesh.get_indexed_triangles().size());
 
         VkAccelerationStructureBuildSizesInfoKHR& size = size_infos[i];
         size = {};
@@ -195,18 +195,17 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool, const Scene& 
 
     uint32_t instance_index = 0;
 
-    for (size_t i = 0; i < scene.get_object_variants().size(); i++) {
+    for (const ObjectVariant& variant : scene.get_object_variants()) {
+
         VkAccelerationStructureDeviceAddressInfoKHR acceleration_device_address_info{};
         acceleration_device_address_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-        acceleration_device_address_info.accelerationStructure = blas[i];
+        acceleration_device_address_info.accelerationStructure = blas[variant.mesh_index];
         VkDeviceAddress blas_address = vkGetAccelerationStructureDeviceAddressKHR(device.logical_handle(), &acceleration_device_address_info);
 
-        const ObjectVariant& object_variant = scene.get_object_variants()[i];
-
-        for (size_t j = 0; j < object_variant.instances.size(); j++) {
+        for (size_t j = 0; j < variant.instances.size(); j++) {
             VkAccelerationStructureInstanceKHR& instance = instances[instance_index];
             instance = {};
-            instance.transform = to_vk_transform_matrix(object_variant.instances[j].transform.matrix);
+            instance.transform = to_vk_transform_matrix(variant.instances[j].transform.matrix);
             instance.instanceCustomIndex = instance_index;
             instance.mask = 0xFF;
             instance.instanceShaderBindingTableRecordOffset = 0;
@@ -287,7 +286,7 @@ void AccelerationStructure::create_tlas(CommandPool& command_pool, const Scene& 
 AccelerationStructure::AccelerationStructure(Device& device,
                                              CommandPool& command_pool,
                                              const Scene& scene,
-                                             const SceneBuffer<PathTraceInstanceData>& scene_buffer)
+                                             const SceneBuffer& scene_buffer)
     : device(device)
 {
     create_blas(command_pool, scene, scene_buffer);
@@ -310,7 +309,7 @@ void AccelerationStructure::free()
         vkDestroyAccelerationStructureKHR(device.logical_handle(), b, nullptr);
 }
 
-void AccelerationStructure::rebuild(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer)
+void AccelerationStructure::rebuild(CommandPool& command_pool, const Scene& scene, const SceneBuffer& scene_buffer)
 {
     free();
     create_blas(command_pool, scene, scene_buffer);

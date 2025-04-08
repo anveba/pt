@@ -55,7 +55,7 @@ class Device
                                VkImageTiling tiling,
                                VkFormatFeatureFlags features);
 
-    inline const PhysicalDeviceInfo& get_physical_device_info() { return physical_device_info; }
+    inline const PhysicalDeviceInfo& get_physical_device_info() const { return physical_device_info; }
 
     VkDeviceAddress get_buffer_address(VkBuffer buffer);
 

@@ -25,6 +25,7 @@ struct PathTraceUniformData
     alignas(16) Uint4 seed;
     alignas(4) uint32_t samples;
     alignas(4) uint32_t max_bounces;
+    alignas(4) uint32_t light_count;
 };
 
 class PathTracer
@@ -56,7 +57,7 @@ class PathTracer
   private:
     Device& device;
 
-    SceneBuffer<PathTraceInstanceData> scene_buffer;
+    SceneBuffer scene_buffer;
     SceneTextures scene_textures;
     AccelerationStructure acceleration_structure;
 
@@ -81,6 +82,7 @@ class PathTracer
     void create_shader_binding_tables();
     void create_pipeline();
     void update_descriptor_sets();
+    void update_scene_uniform_data(const Scene& scene);
 
     NO_COPY(PathTracer);
 };

@@ -10,10 +10,10 @@ class AccelerationStructure
     AccelerationStructure(Device& device,
                           CommandPool& command_pool,
                           const Scene& scene,
-                          const SceneBuffer<PathTraceInstanceData>& scene_buffer);
+                          const SceneBuffer& scene_buffer);
     ~AccelerationStructure();
 
-    void rebuild(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer);
+    void rebuild(CommandPool& command_pool, const Scene& scene, const SceneBuffer& scene_buffer);
 
     inline const VkAccelerationStructureKHR& get_top_level() const { return tlas; }
 
@@ -28,7 +28,7 @@ class AccelerationStructure
     VkDeviceMemory tlas_memory;
     VkAccelerationStructureKHR tlas;
 
-    void create_blas(CommandPool& command_pool, const Scene& scene, const SceneBuffer<PathTraceInstanceData>& scene_buffer);
+    void create_blas(CommandPool& command_pool, const Scene& scene, const SceneBuffer& scene_buffer);
     void create_tlas(CommandPool& command_pool, const Scene& scene);
     void free();
 

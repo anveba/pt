@@ -295,40 +295,41 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
         if (subscene.instances.empty())
             continue;
 
-        size_t mat_offset = scene.materials.size();
-        size_t tex_offset = scene.texture_paths.size();
+        size_t mesh_offset = scene.meshes.size();
+        size_t material_offset = scene.materials.size();
+        size_t texture_offset = scene.texture_paths.size();
 
         Scene loaded_scene;
         loaded_scene.from_file(scene.resource_directory + subscene.path, dummy_camera);
+
+        // Add all meshes
+        scene.meshes.insert(scene.meshes.end(), loaded_scene.meshes.begin(), loaded_scene.meshes.end());
 
         // Add all object variants and instances from the subscenes and their instances
         for (const ObjectVariant& loaded_variant : loaded_scene.object_variants) {
 
             scene.object_variants.emplace_back();
-            scene.object_variants.back().mesh = loaded_variant.mesh;
-            scene.object_variants.back().instances.resize(loaded_variant.instances.size() * subscene.instances.size());
+            scene.object_variants.back().mesh_index = loaded_variant.mesh_index + mesh_offset;
+            scene.object_variants.back().material_index = loaded_variant.material_index + material_offset;
 
+            scene.object_variants.back().instances.resize(loaded_variant.instances.size() * subscene.instances.size());
             size_t inst_idx = 0;
             for (const SceneInstance& scene_inst : subscene.instances) {
-
-                for (const Instance& obj_inst : loaded_variant.instances) {
-                    scene.object_variants.back().instances[inst_idx].material_index = obj_inst.material_index + mat_offset;
-                    scene.object_variants.back().instances[inst_idx].transform.matrix = scene_inst.transform.matrix * obj_inst.transform.matrix;
-                    inst_idx++;
-                }
+                for (const Instance& obj_inst : loaded_variant.instances)
+                    scene.object_variants.back().instances[inst_idx++].transform.matrix = scene_inst.transform.matrix * obj_inst.transform.matrix;
             }
             assert(inst_idx == loaded_variant.instances.size() * subscene.instances.size());
         }
 
-        // Add all materials
+        // Add all materials and offset the texture indices
         scene.materials.insert(scene.materials.end(), loaded_scene.materials.begin(), loaded_scene.materials.end());
-        for (size_t i = mat_offset; i < scene.materials.size(); i++)
-            scene.materials[i].offset_maps_by(static_cast<uint32_t>(tex_offset));
+        for (size_t i = material_offset; i < scene.materials.size(); i++)
+            scene.materials[i].offset_maps_by(static_cast<uint32_t>(texture_offset));
 
-        // Add all textures
+        // Add all textures and update their relative path
         std::string subscene_relative_resource_directory = directory_of(subscene.path);
         scene.texture_paths.insert(scene.texture_paths.end(), loaded_scene.texture_paths.begin(), loaded_scene.texture_paths.end());
-        for (size_t i = tex_offset; i < scene.texture_paths.size(); i++)
+        for (size_t i = texture_offset; i < scene.texture_paths.size(); i++)
             scene.texture_paths[i] = subscene_relative_resource_directory + scene.texture_paths[i];
     }
 

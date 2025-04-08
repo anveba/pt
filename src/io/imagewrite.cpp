@@ -4,6 +4,7 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb/stb_image_write.h>
+#include <stdexcept>
 
 OutputImageFormat image_format_from_string(const std::string& str)
 {
@@ -27,9 +28,12 @@ void write_hdr(const uint8_t* map, const std::string& out_path, uint32_t width, 
         map += row_pitch;
     }
 
-    stbi_write_hdr(out_path.c_str(), width, height, 4, data);
+    int result = stbi_write_hdr(out_path.c_str(), width, height, 4, data);
 
     delete[] data;
+
+    if (!result)
+        throw std::runtime_error("Could not write HDR file.");
 }
 
 uint8_t float_to_byte(float x)
@@ -54,7 +58,10 @@ void write_png(const uint8_t* map, const std::string& out_path, uint32_t width, 
         map += row_pitch;
     }
 
-    stbi_write_png(out_path.c_str(), width, height, 4, data, 4 * width);
+    int result = stbi_write_png(out_path.c_str(), width, height, 4, data, 4 * width);
 
     delete[] data;
+
+    if (!result)
+        throw std::runtime_error("Could not write PNG file.");
 }

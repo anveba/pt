@@ -6,6 +6,6 @@ cbuffer ubo : register(b2) { UniformBufferObject ubo; };
 [shader("miss")]
 void main(inout RayPayload payload)
 {
-    payload.throughput = float4(0.0, 0.0, 0.0, INFINITY);
-    payload.emission = ubo.environment_colour.rgb;
+    add_radiance(payload, ubo.environment_colour.rgb);
+    no_scatter(payload);
 }

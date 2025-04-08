@@ -4,7 +4,10 @@
 struct InstanceData {
     uint vertex_index;
     uint index_index;
+    uint emitter_index;
     uint material_index;
+    float4x4 transform;
+    float3x3 normal;
 };
 
 struct Vertex {
@@ -12,6 +15,25 @@ struct Vertex {
     float3 normal;
     float2 uv;
 };
+
+InstanceData get_instance_data(in StructuredBuffer<InstanceData> instance_buffer, uint i) {
+    return instance_buffer[i];
+}
+
+uint3 get_index(in StructuredBuffer<uint> index_buffer, uint i) {
+    return uint3(index_buffer[i + 0], index_buffer[i + 1], index_buffer[i + 2]);
+}
+
+Vertex get_vertex(in StructuredBuffer<float4> vertex_buffer, uint i) {
+    float4 v0 = vertex_buffer[i * 2 + 0];
+    float4 v1 = vertex_buffer[i * 2 + 1];
+
+    Vertex v;
+    v.position = v0.xyz;
+    v.normal = float3(v0.w, v1.xy);
+    v.uv = v1.zw;
+    return v;
+}
 
 void get_vertex_attributes(
     in float2 barycentric, in Vertex v_a, in Vertex v_b, in Vertex v_c, 
@@ -31,18 +53,18 @@ void get_vertex_vectors(
 {
     float2 duv_ab = v_b.uv - v_a.uv; 
     float2 duv_ac = v_c.uv - v_a.uv;
+    float3 ab = v_b.position - v_a.position; 
+    float3 ac = v_c.position - v_a.position;
+    true_normal = cross(ab, ac);
 
     if (duv_ab.x == 0.0 && duv_ab.y == 0.0 && duv_ac.x == 0.0 && duv_ac.y == 0.0) {
-        duv_ab = float2(1.0, 0.0);
-        duv_ac = float2(0.0, 1.0);
+        tangent = cross(true_normal, abs(true_normal.y) > 1e-5 ? float3(1.0, 0.0, 0.0) : float3(0.0, 1.0, 0.0));
+    } else {
+        float denom = duv_ab.x * duv_ac.y - duv_ac.x * duv_ab.y;
+        tangent = (duv_ac.y * ab - duv_ab.y * ac) / denom;
+        tangent = tangent - dot(tangent, normal) * normal;
     }
 
-    float3 ab = v_b.position - v_a.position; 
-    float3 ac = v_c.position - v_a.position; 
-    true_normal = normalize(cross(ab, ac));
-    float denom = duv_ab.x * duv_ac.y - duv_ac.x * duv_ab.y;
-    tangent = (duv_ac.y * ab - duv_ab.y * ac) / denom;
-    tangent = normalize(tangent - dot(tangent, normal) * normal);
     bitangent = cross(normal, tangent);
 }
 

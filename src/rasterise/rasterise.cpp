@@ -33,7 +33,6 @@ Rasteriser::Rasteriser(
     create_render_pass(image_format, depth_format);
     create_pipeline();
 
-    set_scene(command_pool, scene);
     update_descriptor_set();
 }
 
@@ -131,13 +130,13 @@ void Rasteriser::create_pipeline()
 
     std::vector<VkVertexInputBindingDescription> binding_descriptions = {
         Vertex::binding_description(0),
-        RasteriseInstanceData::binding_description(1)
+        InstanceData::binding_description(1)
     };
 
     std::vector<VkVertexInputAttributeDescription> attribute_descriptions;
     auto vertex_attributes = Vertex::attribute_descriptions(0, 0);
     attribute_descriptions.insert(attribute_descriptions.end(), vertex_attributes.begin(), vertex_attributes.end());
-    auto instance_attributes = RasteriseInstanceData::attribute_descriptions(1, vertex_attributes.size());
+    auto instance_attributes = InstanceData::attribute_descriptions(1, vertex_attributes.size());
     attribute_descriptions.insert(attribute_descriptions.end(), instance_attributes.begin(), instance_attributes.end());
     assert(attribute_descriptions.size() == 10);
 
@@ -310,7 +309,7 @@ void Rasteriser::write_command_buffer(VkCommandBuffer command_buffer, VkFramebuf
         const BufferIndices start_indices = scene_buffer.get_start_indices(i);
         const BufferIndices end_indices = scene_buffer.get_start_indices(i + 1);
         uint32_t index_count = end_indices.index - start_indices.index;
-        uint32_t instance_count = end_indices.instance - start_indices.instance;
+        uint32_t instance_count = scene_buffer.instance_count_of(i);
         vkCmdDrawIndexed(command_buffer, index_count, instance_count, start_indices.index, start_indices.vertex, first_instance);
         first_instance += instance_count;
     }

@@ -192,21 +192,27 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
         texture_paths[texture_index.second] = texture_index.first;
 }
 
-static void process_meshes(const aiScene* scene, std::vector<ObjectVariant>& object_variants)
+static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std::vector<ObjectVariant>& object_variants)
 {
+    // Takes advantage of the fact that Assimp meshes each have a material (meaning
+    // that objects with the same mesh but differing materials won't exist).
+
     object_variants.resize(scene->mNumMeshes);
+    meshes.resize(scene->mNumMeshes);
 
     for (size_t i = 0; i < scene->mNumMeshes; i++) {
 
         const auto mesh = scene->mMeshes[i];
-        object_variants[i].mesh.get_vertices().resize(mesh->mNumVertices);
+        object_variants[i].mesh_index = i;
+        object_variants[i].material_index = mesh->mMaterialIndex;
+        meshes[i].get_vertices().resize(mesh->mNumVertices);
 
         bool has_uvs = mesh->mTextureCoords[0] != nullptr;
         if (!has_uvs)
             std::cerr << "Warning: mesh \"" << mesh->mName.C_Str() << "\" has no UVs." << std::endl;
 
         for (size_t j = 0; j < mesh->mNumVertices; j++) {
-            Vertex& v = object_variants[i].mesh.get_vertices()[j];
+            Vertex& v = meshes[i].get_vertices()[j];
             v.position.x = mesh->mVertices[j].x;
             v.position.y = mesh->mVertices[j].y;
             v.position.z = mesh->mVertices[j].z;
@@ -221,9 +227,9 @@ static void process_meshes(const aiScene* scene, std::vector<ObjectVariant>& obj
             }
         }
 
-        object_variants[i].mesh.get_indexed_triangles().resize(mesh->mNumFaces);
+        meshes[i].get_indexed_triangles().resize(mesh->mNumFaces);
         for (size_t j = 0; j < mesh->mNumFaces; j++) {
-            IndexedTriangle& t = object_variants[i].mesh.get_indexed_triangles()[j];
+            IndexedTriangle& t = meshes[i].get_indexed_triangles()[j];
             assert(mesh->mFaces->mNumIndices == 3);
             t.indices[0] = mesh->mFaces[j].mIndices[0];
             t.indices[1] = mesh->mFaces[j].mIndices[1];
@@ -238,7 +244,6 @@ static void process_scene_node(std::vector<ObjectVariant>& variants, Camera& cam
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
         Instance inst;
         inst.transform.matrix = transform;
-        inst.material_index = scene->mMeshes[node->mMeshes[i]]->mMaterialIndex;
 
         variants[node->mMeshes[i]].instances.push_back(inst);
     }
@@ -249,17 +254,19 @@ static void process_scene_node(std::vector<ObjectVariant>& variants, Camera& cam
 
 std::string Scene::scene_details()
 {
-    size_t instance_count = 0, unique_vertex_count = 0, unique_triangle_count = 0, triangle_count = 0, emitter_count = 0;
-    for (const ObjectVariant& variant : get_object_variants()) {
-
-        instance_count += variant.instances.size();
-        unique_vertex_count += variant.mesh.get_vertices().size();
-        unique_triangle_count += variant.mesh.get_indexed_triangles().size();
-        triangle_count += variant.instances.size() * variant.mesh.get_indexed_triangles().size();
-
-        for (const Instance& inst : variant.instances)
-            emitter_count += get_materials()[inst.material_index].is_emitter() ? 1 : 0;
+    size_t unique_vertex_count = 0, unique_triangle_count = 0;
+    for (const Mesh& mesh : meshes) {
+        unique_triangle_count += mesh.get_indexed_triangles().size();
+        unique_vertex_count += mesh.get_vertices().size();
     }
+
+    size_t instance_count = 0, triangle_count = 0, emitter_count = 0;
+    for (const ObjectVariant& variant : get_object_variants()) {
+        instance_count += variant.instances.size();
+        triangle_count += variant.instances.size() * meshes[variant.mesh_index].get_indexed_triangles().size();
+        emitter_count += get_materials()[variant.material_index].is_emitter() ? 1 : 0;
+    }
+
     std::stringstream stream;
     stream << "Scene has:\n"
            << "    " << get_object_variants().size() << " meshes\n"
@@ -284,7 +291,10 @@ void Scene::from_file(const std::string& path, Camera& camera)
             aiProcess_FlipUVs |
             aiProcess_GenNormals |
             aiProcess_JoinIdenticalVertices |
+            // aiProcess_ImproveCacheLocality |
             aiProcess_RemoveRedundantMaterials |
+            aiProcess_FindDegenerates |
+            aiProcess_FindInvalidData |
             aiProcess_FindInstances |
             aiProcess_OptimizeMeshes |
             aiProcess_OptimizeGraph);
@@ -313,7 +323,7 @@ void Scene::from_file(const std::string& path, Camera& camera)
 
     process_materials(scene, materials, texture_paths);
 
-    process_meshes(scene, object_variants);
+    process_meshes(scene, meshes, object_variants);
 
     process_scene_node(object_variants, camera, scene, scene->mRootNode, Mat4(1.0f));
 
@@ -330,10 +340,11 @@ void Scene::clear()
 bool Scene::check_valid()
 {
     for (const auto& variant : object_variants) {
-        for (const auto& inst : variant.instances) {
-            if (inst.material_index >= materials.size())
-                return false;
-        }
+        if (variant.material_index >= materials.size())
+            return false;
+        if (variant.mesh_index >= meshes.size())
+            return false;
+        // TODO check texture indices
     }
 
     return true;

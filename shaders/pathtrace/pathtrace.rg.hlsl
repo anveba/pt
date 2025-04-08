@@ -11,12 +11,11 @@ void main()
     const uint3 id = DispatchRaysIndex();
     const uint3 size = DispatchRaysDimensions();
 
-    uint dispatch_seed = (id.x << 16) | (id.y & 0x0000FFFF);
-    RayPayload payload;
+    uint id_hash = (id.x << 16) | (id.y & 0x0000FFFF);
     //TODO set better seeds
-    seed(payload.rng, uint4(dispatch_seed + 0, dispatch_seed + 1, dispatch_seed + 2, dispatch_seed + 3), ubo.seed);
-    
-    float3 radiance_sum = float3(0.0, 0.0, 0.0);
+    uint4 dispatch_seed = uint4(id_hash + 0, id_hash + 1, id_hash + 2, id_hash + 3);
+
+    RayPayload payload = create_ray_payload(create_rng(dispatch_seed, ubo.seed));
 
     for (uint i = 0; i < ubo.samples; i++) {
 
@@ -32,16 +31,14 @@ void main()
         ray_desc.Direction = normalize(mul(ubo.inv_view, float4(target.xyz, 0.0)).xyz);
         ray_desc.TMin = ubo.near;
         ray_desc.TMax = ubo.far;
-
-        float3 throughput = float3(1.0, 1.0, 1.0);
    
-        payload.throughput.w = (ubo.max_bounces == 0) ? 1.0 : 0.0;
+        set_new_path(payload);
+        set_new_segment(payload, ubo.max_bounces == 0);
+
         TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
-        radiance_sum += payload.emission.rgb * throughput;
-        throughput *= payload.throughput.rgb;
 
         // Check if initial ray hit. If so, we continue tracing rays.
-        if (!isinf(payload.throughput.w)) {
+        if (!is_final_segment(payload)) {
 
             ray_desc.TMin = 0;
             ray_desc.TMax = INFINITY;
@@ -49,24 +46,23 @@ void main()
             uint i;
             for (i = 0; i < ubo.max_bounces; i++) {
 
-                ray_desc.Origin = payload.intersection;
-                ray_desc.Direction = payload.incoming_direction;
-                set_final_bounce(payload, i + 1 >= ubo.max_bounces);
+                get_next_ray(payload, ray_desc.Origin, ray_desc.Direction);
+
+                set_new_segment(payload, i + 1 >= ubo.max_bounces);
 
                 TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
-                radiance_sum += payload.emission.rgb * throughput;
-                throughput *= payload.throughput.rgb;
 
-                if (isinf(payload.throughput.w))
+                if (is_final_segment(payload))
                     break;
 
                 // Apply Russian roulette
+                const float3 throughput = get_throughput(payload);
                 const float max_throughput = max(max(throughput.r, throughput.g), throughput.b);
                 if (max_throughput < 1.0) {
                     float q = max(0.0, 1.0 - max_throughput);
                     if (next_float(payload.rng) < q)
                         break;
-                    throughput = throughput / (1.0 - q);
+                    accumulate_throughput(payload, 1.0 / (1.0 - q));
                 }
             }
         }
@@ -74,5 +70,5 @@ void main()
     // This condition is used in order to zero out NaN values that may be present in the image.
     // TODO: do this in a compute shader right after image creation (or with vkCmdClearColorImage?)
     float4 old_value = (ubo.old_samples_mult == 0.0) ? float4(0.0, 0.0, 0.0, 1.0) : ubo.old_samples_mult * dest_image[int2(id.xy)];
-    dest_image[int2(id.xy)] = old_value + ubo.new_samples_mult * float4(radiance_sum / ubo.samples, 1.0);
+    dest_image[int2(id.xy)] = old_value + ubo.new_samples_mult * float4(get_radiance(payload) / ubo.samples, 1.0);
 }

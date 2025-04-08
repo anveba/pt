@@ -4,6 +4,7 @@
 #include "rng.hlsli"
 #include "util.hlsli"
 
+// From Ray Tracing Gems, 2019, Chapter 16
 float3 cosine_weighted_rand_dir(inout Rng rng) {
     float u1 = next_float(rng);
     float u2 = next_float(rng);
@@ -11,6 +12,20 @@ float3 cosine_weighted_rand_dir(inout Rng rng) {
     float y = sqrt(u1) * sin(2.0 * PI * u2);
     float z = sqrt(1.0 - u1);
     return float3(x, y, z);
+}
+
+// From Ray Tracing Gems, 2019, Chapter 16
+float3 random_barycentric(inout Rng rng) {
+    float beta = 1.0 - sqrt(next_float(rng)); 
+    float gamma = (1.0 - beta) * next_float(rng);
+    float alpha = 1.0 - beta - gamma;
+    return float3(alpha, beta, gamma);
+}
+
+// From Ray Tracing Gems, 2019, Chapter 16
+float3 sample_triangle(float3 p_a, float3 p_b, float3 p_c, inout Rng rng) {
+    float3 bary = random_barycentric(rng);
+    return bary.x * p_a + bary.y * p_b + bary.z * p_c;
 }
 
 // https://hal.science/hal-01509746/document

@@ -221,7 +221,7 @@ static int rank_device_type(VkPhysicalDeviceType type)
     }
 }
 
-// TODO: make more accurate comparison (perhaps a scoring system)
+// TODO: create a more accurate comparison function (perhaps a scoring system)
 static int compare_physical_device(const PhysicalDeviceInfo& info1, const PhysicalDeviceInfo& info2)
 {
     if (rank_device_type(info1.properties.deviceType) != rank_device_type(info2.properties.deviceType))

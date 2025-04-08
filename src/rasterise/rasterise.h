@@ -34,7 +34,7 @@ class Rasteriser
     Device& device;
     VkExtent2D extent;
 
-    SceneBuffer<RasteriseInstanceData> scene_buffer;
+    SceneBuffer scene_buffer;
 
     RasteriseUniformData uniform_data;
     UniformBuffer uniform_buffer;

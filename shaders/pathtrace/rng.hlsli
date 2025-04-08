@@ -37,7 +37,8 @@ float xorshift(inout uint rng_state)
     return (float)rng_state / (float)0xFFFFFFFF;
 }
 
-void seed(out Rng rng, uint4 v0, uint4 v1) {
+Rng create_rng(uint4 v0, uint4 v1) {
+    Rng rng;
     const uint n = 16;
     uint s0 = 0;
     for  (uint i = 0; i < n; i++) { 
@@ -46,6 +47,7 @@ void seed(out Rng rng, uint4 v0, uint4 v1) {
         v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e); 
     } 
     rng.state = v0;
+    return rng;
 }
 
 float next_float(inout Rng rng) {

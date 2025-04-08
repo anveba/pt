@@ -1,20 +1,7 @@
 #ifndef MATERIAL_HLSLI_INCLUDED
 #define MATERIAL_HLSLI_INCLUDED
 
-#define BASE_COLOUR_MAP_BIT (1 << 0)
-#define EMISSION_MAP_BIT (1 << 1)
-#define EMISSION_INTENSITY_MAP_BIT (1 << 2)
-#define ROUGHNESS_MAP_BIT (1 << 3)
-#define METALNESS_MAP_BIT (1 << 4)
-#define ROUGHNESS_METALNESS_MAP_BIT (1 << 5)
-#define SPECULAR_MAP_BIT (1 << 6)
-#define SPECULAR_TINT_MAP_BIT (1 << 7)
-#define SHEEN_MAP_BIT (1 << 8)
-#define SHEEN_TINT_MAP_BIT (1 << 9)
-#define CLEARCOAT_MAP_BIT (1 << 10)
-#define CLEARCOAT_ROUGHNESS_MAP_BIT (1 << 11)
-#define ANISOTROPY_MAP_BIT (1 << 12)
-#define NORMAL_MAP_BIT (1 << 13)
+#include "constants.h"
 
 struct PbrMaterial {
     float4 base_colour;
@@ -27,6 +14,57 @@ struct PbrMaterial {
 
 uint map_bits(in PbrMaterial material) {
     return asuint(material.rough_metal_normal_map_bits.w);
+}
+
+PbrMaterial get_material(in StructuredBuffer<PbrMaterial> material_buffer, uint i) {
+    return material_buffer[i];
+}
+
+float3 get_emission(
+    in PbrMaterial material, in float2 uv, 
+    in Texture2D<float4> textures[256], in SamplerState texture_sampler) 
+{
+    if (map_bits(material) & EMISSION_MAP_BIT)
+        return textures[asuint(material.emission.x)].SampleLevel(texture_sampler, uv, 0).rgb * material.emission.a;
+    else
+        return material.emission.rgb * material.emission.a;
+}
+
+float4 get_base_colour(
+    in PbrMaterial material, in float2 uv,
+    in Texture2D<float4> textures[256], in SamplerState texture_sampler) 
+{
+    if (map_bits(material) & BASE_COLOUR_MAP_BIT)
+        return textures[asuint(material.base_colour.x)].SampleLevel(texture_sampler, uv, 0);
+    else
+        return material.base_colour;
+}
+
+void get_roughness_metalness_normal(
+    in PbrMaterial material, in float2 uv, 
+    in Texture2D<float4> textures[256], in SamplerState texture_sampler,
+    out float roughness, out float metalness, out float3 normal) 
+{
+    if (map_bits(material) & ROUGHNESS_METALNESS_MAP_BIT) {
+        float4 t = textures[asuint(material.rough_metal_normal_map_bits.x)].SampleLevel(texture_sampler, uv, 0);
+        roughness = t.g;
+        metalness = t.b;
+    } else {
+        if (map_bits(material) & ROUGHNESS_MAP_BIT)
+            roughness = textures[asuint(material.rough_metal_normal_map_bits.x)].SampleLevel(texture_sampler, uv, 0).r;
+        else
+            roughness = material.rough_metal_normal_map_bits.x;
+
+        if (map_bits(material) & METALNESS_MAP_BIT) 
+            metalness = textures[asuint(material.rough_metal_normal_map_bits.y)].SampleLevel(texture_sampler, uv, 0).r;
+        else
+            metalness = material.rough_metal_normal_map_bits.y;
+    }
+
+    if (map_bits(material) & NORMAL_MAP_BIT)
+        normal = normalize(textures[asuint(material.rough_metal_normal_map_bits.z)].SampleLevel(texture_sampler, uv, 0).xyz * 2.0 - 1.0);
+    else
+        normal = float3(0.0, 0.0, 1.0);
 }
 
 #endif

@@ -12,13 +12,13 @@
 struct Instance
 {
     Transform transform;
-    uint32_t material_index;
 };
 
 struct ObjectVariant
 {
+    uint32_t mesh_index;
+    uint32_t material_index;
     std::vector<Instance> instances;
-    Mesh mesh;
 };
 
 class Scene
@@ -30,9 +30,11 @@ class Scene
     }
 
     inline const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
+    inline const std::vector<Mesh>& get_meshes() const { return meshes; }
     inline const std::vector<PbrMaterial>& get_materials() const { return materials; }
-    inline const std::vector<PointLight>& get_point_lights() const { return point_lights; }
     inline const std::vector<std::string>& get_texture_paths() const { return texture_paths; }
+    inline const std::vector<PointLight>& get_point_lights() const { return point_lights; }
+    inline const std::vector<DirectionalLight>& get_directional_lights() const { return directional_lights; }
     inline const Vec3& get_environment_colour() const { return environment_colour; }
     inline const std::string& get_environment_map_path() const { return environment_map_path; }
     inline const std::string& get_resource_directory() const { return resource_directory; }
@@ -42,9 +44,12 @@ class Scene
 
   private:
     std::vector<ObjectVariant> object_variants;
-    std::vector<PointLight> point_lights;
+    std::vector<Mesh> meshes;
     std::vector<PbrMaterial> materials;
     std::vector<std::string> texture_paths;
+
+    std::vector<PointLight> point_lights;
+    std::vector<DirectionalLight> directional_lights;
 
     Vec3 environment_colour;
     std::string environment_map_path;
