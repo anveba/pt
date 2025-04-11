@@ -1,8 +1,5 @@
 #include "scenetex.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
-
 static VkFormat get_image_format_from_channel_count(int channels)
 {
     // TODO deal with sRGB
@@ -20,32 +17,26 @@ static VkFormat get_image_format_from_channel_count(int channels)
     }
 }
 
-static std::string full_path(const std::string& base_directory, const std::string path)
-{
-    std::string result = base_directory + path;
-    std::replace(result.begin(), result.end(), '\\', '/');
-    return result;
-}
-
 static void create_texture_images(
     Device& device,
     const std::string& base_directory,
-    const std::vector<std::string>& texture_paths,
+    const std::vector<TextureData>& texture_data,
     std::vector<Texture>& textures,
     size_t& size,
     uint32_t& memory_type_bits)
 {
-    textures.resize(texture_paths.size());
+    textures.resize(texture_data.size());
     size = 0;
     memory_type_bits = UINT32_MAX;
-    int width, height, channels;
-    for (size_t i = 0; i < texture_paths.size(); i++) {
-        std::string path = full_path(base_directory, texture_paths[i]);
-        if (!stbi_info(path.c_str(), &width, &height, &channels))
-            throw std::runtime_error("Failed to read image info at " + path);
+    for (size_t i = 0; i < texture_data.size(); i++) {
 
         textures[i].format = VK_FORMAT_R8G8B8A8_UNORM; // TODO: get_image_format_from_channel_count(channels);
-        textures[i].image = device.create_image(width, height, textures[i].format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+        textures[i].image = device.create_image(
+            texture_data[i].get_width(),
+            texture_data[i].get_height(),
+            textures[i].format,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
         vkGetImageMemoryRequirements(device.logical_handle(), textures[i].image, &textures[i].memory_requirements);
 
@@ -95,7 +86,7 @@ static void load_texture_data(
     VkDeviceMemory memory,
     VkDeviceSize memory_size,
     const std::string& base_directory,
-    const std::vector<std::string>& texture_paths,
+    const std::vector<TextureData>& texture_data,
     std::vector<Texture>& textures)
 {
     VkCommandBuffer command_buffer = command_pool.begin_one_time_use_command_buffer();
@@ -115,23 +106,16 @@ static void load_texture_data(
     vkMapMemory(device.logical_handle(), staging_buffer_memory, 0, memory_size, 0, (void**)&mapped);
 
     size_t offset = 0;
-    int width, height, channels;
-    for (size_t i = 0; i < texture_paths.size(); i++) {
+    for (size_t i = 0; i < texture_data.size(); i++) {
         vkBindImageMemory(device.logical_handle(), textures[i].image, memory, offset);
         textures[i].view = device.create_image_view(textures[i].image, textures[i].format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-        std::string path = full_path(base_directory, texture_paths[i]);
-        unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 4); // TODO deal with images with fewer channels
-        if (data == NULL)
-            throw std::runtime_error("Failed to load image at " + path);
-
-        size_t data_size = static_cast<size_t>(width) * height * 4;
+        size_t data_size = static_cast<size_t>(texture_data[i].get_width()) * texture_data[i].get_height() * 4;
         assert(data_size <= textures[i].memory_requirements.size);
         assert(offset + data_size <= memory_size);
-        memcpy(mapped + offset, data, data_size);
-        stbi_image_free(data);
+        memcpy(mapped + offset, texture_data[i].data_handle(), data_size);
 
-        VkExtent2D extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
+        VkExtent2D extent = { texture_data[i].get_width(), texture_data[i].get_height() };
         copy_buffer_to_image(command_buffer, staging_buffer, textures[i].image, extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, offset);
 
         offset = round_up_to(offset + textures[i].memory_requirements.size, textures[i].memory_requirements.alignment);
@@ -164,13 +148,13 @@ void SceneTextures::rebuild(CommandPool& command_pool, const Scene& scene)
 
 void SceneTextures::build(CommandPool& command_pool, const Scene& scene)
 {
-    if (!scene.get_texture_paths().empty()) {
+    if (!scene.get_textures().empty()) {
 
         size_t size;
         uint32_t memory_type_flags;
         create_texture_images(device,
                               scene.get_resource_directory(),
-                              scene.get_texture_paths(),
+                              scene.get_textures(),
                               textures,
                               size,
                               memory_type_flags);
@@ -185,7 +169,7 @@ void SceneTextures::build(CommandPool& command_pool, const Scene& scene)
                           memory,
                           size,
                           scene.get_resource_directory(),
-                          scene.get_texture_paths(),
+                          scene.get_textures(),
                           textures);
     }
 }

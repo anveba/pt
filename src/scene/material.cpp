@@ -2,9 +2,15 @@
 
 bool PbrMaterial::is_emitter() const
 {
-    return (map_bits() & EMISSION_MAP_BIT) ||
-           (map_bits() & EMISSION_INTENSITY_MAP_BIT) ||
-           std::max(std::max(emission.x, emission.y), emission.z) > 0.0f;
+    return ((map_bits() & EMISSION_MAP_BIT) ||
+            std::max(std::max(emission.r, emission.g), emission.b) > 0.0f) &&
+           emission.a > 0.0f;
+}
+
+uint32_t PbrMaterial::emission_map_index() const
+{
+    assert(map_bits() & EMISSION_MAP_BIT);
+    return asuint(emission.r);
 }
 
 void PbrMaterial::offset_maps_by(uint32_t tex_offset)
@@ -13,8 +19,6 @@ void PbrMaterial::offset_maps_by(uint32_t tex_offset)
         asuint(base_colour.x) += tex_offset;
     if (map_bits() & EMISSION_MAP_BIT)
         asuint(emission.x) += tex_offset;
-    if (map_bits() & EMISSION_INTENSITY_MAP_BIT)
-        asuint(emission.w) += tex_offset;
     if ((map_bits() & ROUGHNESS_MAP_BIT) || (map_bits() & ROUGHNESS_METALNESS_MAP_BIT))
         asuint(rough_metal_normal_map_bits.x) += tex_offset;
     if (map_bits() & METALNESS_MAP_BIT)

@@ -52,7 +52,7 @@ float3 sample_light(
     in StructuredBuffer<PbrMaterial> material_buffer,
     in Texture2D<float4> textures[256], in SamplerState texture_sampler,
     uint light_count, inout Rng rng, in float3 pt,
-    out float3 to_light, out float pdf) 
+    out float3 light_dir, out float light_dist, out float pdf, out bool is_delta_light) 
 {
     uint bin_offset = sample_alias_table(light_sampler, light_count, LIGHT_BIN_SIZE, 0, rng, pdf);
 
@@ -86,13 +86,15 @@ float3 sample_light(
 
         float3 bary = random_barycentric(rng);
         float3 point_on_tri = bary.x * p_a + bary.y * p_b + bary.z * p_c;
-        to_light = point_on_tri - pt;
+        light_dir = point_on_tri - pt;
+        light_dist = 1.0;
 
         float3 true_normal = cross(p_b - p_a, p_c - p_a);
         float area = sqrt(dot(true_normal, true_normal)) * 0.5;
-        float cosine = abs(dot(normalize(to_light), normalize(true_normal)));
-        float dist2 = dot(to_light, to_light);
+        float cosine = abs(dot(normalize(light_dir), normalize(true_normal)));
+        float dist2 = dot(light_dir, light_dir);
         pdf *= dist2 / (area * cosine); 
+        is_delta_light = false;
 
         PbrMaterial material = get_material(material_buffer, instance_data.material_index);
         float2 uv = bary.x * v_a.uv + bary.y * v_b.uv + bary.z * v_c.uv;
@@ -104,18 +106,22 @@ float3 sample_light(
             asfloat(light_sampler[bin_offset + 1]),
             asfloat(light_sampler[bin_offset + 2]),
             asfloat(light_sampler[bin_offset + 3]));
-        to_light = light_p - pt;
-        return float3(
+        light_dir = light_p - pt;
+        light_dist = 1.0;
+        is_delta_light = true;
+        return (1.0 / dot(light_dir, light_dir)) * float3(
             asfloat(light_sampler[bin_offset + 4]),
             asfloat(light_sampler[bin_offset + 5]),
             asfloat(light_sampler[bin_offset + 6]));
 
     } else if (light_type == LIGHT_TYPE_DIRECTIONAL) {
 
-        to_light = -float3(
+        light_dir = float3(
             asfloat(light_sampler[bin_offset + 1]),
             asfloat(light_sampler[bin_offset + 2]),
             asfloat(light_sampler[bin_offset + 3]));
+        light_dist = INFINITY;
+        is_delta_light = true;
         return float3(
             asfloat(light_sampler[bin_offset + 4]),
             asfloat(light_sampler[bin_offset + 5]),
@@ -123,7 +129,8 @@ float3 sample_light(
 
     } else {
         // Should not be reached.
-        to_light = 0.0;
+        light_dist = 0.0;
+        is_delta_light = true;
         return 0.0;
     }
 }

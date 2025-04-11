@@ -38,6 +38,8 @@ class PbrMaterial
 
     bool is_emitter() const;
 
+    uint32_t emission_map_index() const;
+
     void offset_maps_by(uint32_t tex_offset);
 };
 

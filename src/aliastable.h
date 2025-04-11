@@ -25,15 +25,45 @@ class AliasTable
         bins.resize(size);
         double inv_sum = 1.0 / std::accumulate(weights, weights + size, 0.0);
         for (size_t i = 0; i < size; i++) {
+            assert(weights[i] >= 0.0f);
             bins[i].p = weights[i] * inv_sum;
+            bins[i].alias = i;
             bins[i].value = values[i];
         }
 
-        // TODO
-        for (size_t i = 0; i < size; i++) {
-            bins[i].p = 1.0f / size;
-            bins[i].q = 1.0f;
+        // https://en.wikipedia.org/wiki/Alias_method
+
+        std::vector<size_t> underfull, overfull;
+
+        for (size_t i = 0; i < bins.size(); ++i) {
+            float u = bins[i].p * bins.size();
+            bins[i].q = u;
+            if (u < 1.0f)
+                underfull.push_back(i);
+            else
+                overfull.push_back(i);
         }
+
+        while (!underfull.empty() && !overfull.empty()) {
+
+            bins[underfull.back()].alias = overfull.back();
+            bins[overfull.back()].q += bins[underfull.back()].q - 1.0f;
+
+            underfull.pop_back();
+
+            if (bins[overfull.back()].q < 1.0f) {
+                underfull.push_back(overfull.back());
+                overfull.pop_back();
+            }
+        }
+
+        // If the overfull/underfull list is empty and not the other (due to floating point errors), the remaining
+        // bins can be set with q = 1 with minimal error.
+        for (const size_t i : underfull)
+            bins[i].q = 1.0f;
+
+        for (const size_t i : overfull)
+            bins[i].q = 1.0f;
     }
 
     inline size_t size() const { return bins.size(); }

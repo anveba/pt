@@ -17,7 +17,7 @@ class PointLight
     const Vec3& position() const { return pos; }
     Vec3& colour() { return col; }
     const Vec3& colour() const { return col; }
-    float power() const { return std::max(std::max(col.x, col.y), col.z); }
+    float power() const { return col.r + col.g + col.b; }
 
   private:
     Vec3 pos;
@@ -37,12 +37,11 @@ class DirectionalLight
     const Vec3& direction() const { return dir; }
     Vec3& colour() { return col; }
     const Vec3& colour() const { return col; }
-    float power() const { return std::max(std::max(col.x, col.y), col.z); }
+    float power() const { return col.r + col.g + col.b; }
 
   private:
     Vec3 dir;
     Vec3 col;
 };
-
 
 #endif

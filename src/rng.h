@@ -14,6 +14,7 @@ class Xshiro128
     Xshiro128(uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3);
 
     uint32_t next();
+    float next_float();
 
   private:
     uint32_t s[4];

@@ -108,16 +108,16 @@ float3 sample_direction(float3 o, float2 alpha, float metalness, inout Rng rng,
         i = 2.0 * dot(o, m) * m - o;
     }
 
-    float pdf_diffuse = cos_theta(i) / PI * diffuse_cdf;
+    float pdf_diffuse = cos_theta(i) / PI;
 
     float cos_d = dot(m, o);
 
     float pdf_m = (g1(o, alpha) / abs(cos_theta(o))) * distribution(m, alpha) * abs(cos_d);
     float pdf_gtr = pdf_m / (4.0 * abs(cos_d)); //Due to the reflection transformation
-    pdf_gtr *= (1.0 - diffuse_cdf);
 
     // https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/readings/veach.pdf
-
+    pdf_diffuse *= diffuse_cdf;
+    pdf_gtr *= (1.0 - diffuse_cdf);
     pdf = (u < diffuse_cdf) ? pdf_diffuse : pdf_gtr;
     w = pdf / (pdf_diffuse + pdf_gtr); // TODO compare heuristics
 
@@ -132,8 +132,9 @@ float3 light_contribution(
 
     //TODO only calculate emission if the light is not occluded
 
-    float pdf;
-    float3 to_light;
+    float pdf, light_dist;
+    float3 light_dir;
+    bool is_delta_light;
     float3 emission = sample_light(
         light_sampler, 
         vertex_buffer, 
@@ -144,14 +145,22 @@ float3 light_contribution(
         ubo.light_count, 
         rng, 
         intersection, 
-        to_light, 
-        pdf);
+        light_dir,
+        light_dist, 
+        pdf,
+        is_delta_light);
+
+    float3 i = mul(from_world_space, light_dir);
+    if (i.z <= 0.0) 
+        return 0.0;
     
     RayDesc ray_desc;
     ray_desc.Origin = intersection;
-    ray_desc.Direction = to_light;
+    ray_desc.Direction = light_dir;
     ray_desc.TMin = 0.0;
-    ray_desc.TMax = 0.99999;
+    ray_desc.TMax = light_dist - 1e-5;
+
+    //TODO deal with opacity
 
     ShadowRayPayload payload;
     payload.is_occluded = true;
@@ -168,12 +177,17 @@ float3 light_contribution(
     if (payload.is_occluded)
         return 0.0;
 
-    float3 i = normalize(mul(from_world_space, to_light));
+    i = normalize(i);
     float3 m = normalize(i + o);
     float pdf_brdf;
     float3 brdf = evaluate_brdf(brdf_input, i, o, m, pdf_brdf);
-    float w = sq(pdf) / (sq(pdf) + sq(pdf_brdf));
-    return w * emission * brdf * cos_theta(i) / pdf;
+
+    if (is_delta_light) {
+        return emission * brdf * cos_theta(i) / pdf;
+    } else {
+        float w = sq(pdf) / (sq(pdf) + sq(pdf_brdf));
+        return w * emission * brdf * cos_theta(i) / pdf;
+    }
 }
 
 [shader("closesthit")]
@@ -209,9 +223,10 @@ void main(inout RayPayload payload, in Attributes attributes)
 
         float pdf_l = light_pdf(light_sampler, instance_data.emitter_index, PrimitiveIndex()); 
         pdf_l *= dist2 / (area * cosine);
-
-        float w = sq(get_brdf_pdf(payload)) / (sq(get_brdf_pdf(payload)) + sq(pdf_l));
-        add_radiance(payload, w * emission);
+        if (pdf_l > 0.0 && dist2 > 0.0) {
+            float w = sq(get_brdf_pdf(payload)) / (sq(get_brdf_pdf(payload)) + sq(pdf_l));
+            add_radiance(payload, w * emission);
+        }
     } 
 
     if (is_final_segment(payload)) 

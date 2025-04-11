@@ -287,9 +287,13 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
     scene.environment_colour = state.environment_colour;
     scene.environment_map_path = state.environment_map_path;
 
-    Camera dummy_camera(Vec3(0.0f), Quaternion(), 45.0f, 1.0f, 0.1f, 10000.0f); // TODO remove
+    // Add lights that were described in the scene description file.
+    scene.point_lights.insert(scene.point_lights.end(), state.point_lights.begin(), state.point_lights.end());
+    scene.directional_lights.insert(scene.directional_lights.end(), state.directional_lights.begin(), state.directional_lights.end());
 
     // TODO materials
+
+    Camera dummy_camera(Vec3(0.0f), Quaternion(), 45.0f, 1.0f, 0.1f, 10000.0f); // TODO remove
 
     for (const Subscene& subscene : state.subscenes) {
         if (subscene.instances.empty())
@@ -297,13 +301,27 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
 
         size_t mesh_offset = scene.meshes.size();
         size_t material_offset = scene.materials.size();
-        size_t texture_offset = scene.texture_paths.size();
+        size_t texture_offset = scene.textures.size();
 
         Scene loaded_scene;
         loaded_scene.from_file(scene.resource_directory + subscene.path, dummy_camera);
 
         // Add all meshes
         scene.meshes.insert(scene.meshes.end(), loaded_scene.meshes.begin(), loaded_scene.meshes.end());
+
+        for (const SceneInstance& scene_inst : subscene.instances) {
+            // Add all point lights
+            for (const PointLight& pl : loaded_scene.point_lights) {
+                scene.point_lights.push_back(pl);
+                scene.point_lights.back().position() = Vec3(scene_inst.transform.matrix * Vec4(pl.position(), 1.0f));
+            }
+
+            // Add all directional lights
+            for (const DirectionalLight& dl : loaded_scene.directional_lights) {
+                scene.directional_lights.push_back(dl);
+                scene.directional_lights.back().direction() = Vec3(scene_inst.transform.matrix * Vec4(dl.direction(), 0.0f));
+            }
+        }
 
         // Add all object variants and instances from the subscenes and their instances
         for (const ObjectVariant& loaded_variant : loaded_scene.object_variants) {
@@ -327,10 +345,9 @@ void SceneBuilder::read_scene_description(Scene& scene, Camera& camera, const st
             scene.materials[i].offset_maps_by(static_cast<uint32_t>(texture_offset));
 
         // Add all textures and update their relative path
-        std::string subscene_relative_resource_directory = directory_of(subscene.path);
-        scene.texture_paths.insert(scene.texture_paths.end(), loaded_scene.texture_paths.begin(), loaded_scene.texture_paths.end());
-        for (size_t i = texture_offset; i < scene.texture_paths.size(); i++)
-            scene.texture_paths[i] = subscene_relative_resource_directory + scene.texture_paths[i];
+        scene.textures.reserve(scene.textures.size() + loaded_scene.textures.size());
+        for (size_t i = 0; i < loaded_scene.textures.size(); i++)
+            scene.textures.push_back(std::move(loaded_scene.textures[i]));
     }
 
     assert(scene.check_valid());

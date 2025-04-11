@@ -7,6 +7,7 @@
 #include "light.h"
 #include "material.h"
 #include "mesh.h"
+#include "texturedata.h"
 #include "transform.h"
 
 struct Instance
@@ -32,7 +33,7 @@ class Scene
     inline const std::vector<ObjectVariant>& get_object_variants() const { return object_variants; }
     inline const std::vector<Mesh>& get_meshes() const { return meshes; }
     inline const std::vector<PbrMaterial>& get_materials() const { return materials; }
-    inline const std::vector<std::string>& get_texture_paths() const { return texture_paths; }
+    inline const std::vector<TextureData>& get_textures() const { return textures; }
     inline const std::vector<PointLight>& get_point_lights() const { return point_lights; }
     inline const std::vector<DirectionalLight>& get_directional_lights() const { return directional_lights; }
     inline const Vec3& get_environment_colour() const { return environment_colour; }
@@ -46,7 +47,7 @@ class Scene
     std::vector<ObjectVariant> object_variants;
     std::vector<Mesh> meshes;
     std::vector<PbrMaterial> materials;
-    std::vector<std::string> texture_paths;
+    std::vector<TextureData> textures;
 
     std::vector<PointLight> point_lights;
     std::vector<DirectionalLight> directional_lights;

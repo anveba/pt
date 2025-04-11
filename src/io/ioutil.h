@@ -13,4 +13,7 @@ void filter_string(std::string& raw, const std::string& chars_to_remove);
 // unless there is no directory given.
 std::string directory_of(const std::string& file);
 
+// Constructs the complete path from the base directory and the relative path given.
+std::string full_path(const std::string& base_directory, const std::string relative_path);
+
 #endif

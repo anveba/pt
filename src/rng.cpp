@@ -39,6 +39,11 @@ uint32_t Xshiro128::next()
     return result;
 }
 
+float Xshiro128::next_float()
+{
+    return static_cast<float>(next()) / UINT32_MAX;
+}
+
 Splitmix32::Splitmix32() {}
 
 Splitmix32::Splitmix32(uint32_t state)

@@ -7,6 +7,12 @@
 #include <optional>
 #include <sstream>
 
+struct TextureMetadata
+{
+    uint32_t index;
+    bool is_srgb;
+};
+
 static Mat4 convert_matrix(aiMatrix4x4 m)
 {
     return Mat4(
@@ -32,34 +38,43 @@ static Mat4 convert_matrix(aiMatrix4x4 m)
         m.d4);
 }
 
+static bool texture_is_srgb(aiTextureType texture_type)
+{
+    return texture_type == aiTextureType_BASE_COLOR ||
+           texture_type == aiTextureType_DIFFUSE ||
+           texture_type == aiTextureType_EMISSION_COLOR ||
+           texture_type == aiTextureType_EMISSIVE;
+}
+
+// Returns the index of the texture.
 static std::optional<uint32_t> process_texture(
     const aiMaterial* mat,
     aiTextureType texture_type,
-    std::unordered_map<std::string, uint32_t>& texture_index_map,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
     uint32_t& current_texture_index)
 {
     if (mat->GetTextureCount(texture_type) == 0)
         return std::nullopt;
     aiString path;
     mat->GetTexture(texture_type, 0, &path);
-    if (texture_index_map.count(path.C_Str()) == 0) {
+    if (texture_map.count(path.C_Str()) == 0) {
         std::cout << "Using texture: " << path.C_Str() << std::endl;
-        texture_index_map[path.C_Str()] = current_texture_index;
+        texture_map[path.C_Str()] = { .index = current_texture_index, .is_srgb = texture_is_srgb(texture_type) };
         return current_texture_index++;
     } else {
-        return texture_index_map[path.C_Str()];
+        return texture_map[path.C_Str()].index;
     }
 }
 
 static Vec4 process_base_colour(
     const aiMaterial* mat,
     uint32_t& map_bits,
-    std::unordered_map<std::string, uint32_t>& texture_index_map,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
     uint32_t& current_texture_index)
 {
-    std::optional<uint32_t> map = process_texture(mat, aiTextureType_BASE_COLOR, texture_index_map, current_texture_index);
+    std::optional<uint32_t> map = process_texture(mat, aiTextureType_BASE_COLOR, texture_map, current_texture_index);
     if (!map)
-        map = process_texture(mat, aiTextureType_DIFFUSE, texture_index_map, current_texture_index);
+        map = process_texture(mat, aiTextureType_DIFFUSE, texture_map, current_texture_index);
 
     if (map) {
         map_bits |= BASE_COLOUR_MAP_BIT;
@@ -78,14 +93,14 @@ static Vec4 process_base_colour(
 static Vec4 process_emission(
     const aiMaterial* mat,
     uint32_t& map_bits,
-    std::unordered_map<std::string, uint32_t>& texture_index_map,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
     uint32_t& current_texture_index)
 {
     Vec4 result;
 
-    std::optional<uint32_t> map = process_texture(mat, aiTextureType_EMISSION_COLOR, texture_index_map, current_texture_index);
+    std::optional<uint32_t> map = process_texture(mat, aiTextureType_EMISSION_COLOR, texture_map, current_texture_index);
     if (!map)
-        map = process_texture(mat, aiTextureType_EMISSIVE, texture_index_map, current_texture_index);
+        map = process_texture(mat, aiTextureType_EMISSIVE, texture_map, current_texture_index);
 
     if (map) {
         map_bits |= EMISSION_MAP_BIT;
@@ -112,19 +127,19 @@ static Vec4 process_emission(
 static Vec3 process_roughness_metalness_normal(
     const aiMaterial* mat,
     uint32_t& map_bits,
-    std::unordered_map<std::string, uint32_t>& texture_index_map,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
     uint32_t& current_texture_index)
 {
     Vec3 result;
 
-    std::optional<uint32_t> map = process_texture(mat, aiTextureType_GLTF_METALLIC_ROUGHNESS, texture_index_map, current_texture_index);
+    std::optional<uint32_t> map = process_texture(mat, aiTextureType_GLTF_METALLIC_ROUGHNESS, texture_map, current_texture_index);
     if (map) {
         map_bits |= ROUGHNESS_METALNESS_MAP_BIT;
         float index_as_float;
         memcpy(&index_as_float, &map.value(), 4);
         result.x = index_as_float;
     } else {
-        map = process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_index_map, current_texture_index);
+        map = process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_map, current_texture_index);
         if (map) {
             map_bits |= ROUGHNESS_MAP_BIT;
             float index_as_float;
@@ -137,7 +152,7 @@ static Vec3 process_roughness_metalness_normal(
             result.x = roughness;
         }
 
-        map = process_texture(mat, aiTextureType_METALNESS, texture_index_map, current_texture_index);
+        map = process_texture(mat, aiTextureType_METALNESS, texture_map, current_texture_index);
         if (map) {
             map_bits |= METALNESS_MAP_BIT;
             float index_as_float;
@@ -151,7 +166,7 @@ static Vec3 process_roughness_metalness_normal(
         }
     }
 
-    map = process_texture(mat, aiTextureType_NORMALS, texture_index_map, current_texture_index);
+    map = process_texture(mat, aiTextureType_NORMALS, texture_map, current_texture_index);
     if (map) {
         map_bits |= NORMAL_MAP_BIT;
         float index_as_float;
@@ -162,13 +177,17 @@ static Vec3 process_roughness_metalness_normal(
     return result;
 }
 
-static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& materials, std::vector<std::string>& texture_paths)
+static void process_materials(
+    const aiScene* scene,
+    std::vector<PbrMaterial>& materials,
+    std::vector<TextureData>& textures,
+    const std::string& base_directory)
 {
     assert(scene->mNumMaterials > 0);
 
     materials.resize(scene->mNumMaterials);
 
-    std::unordered_map<std::string, uint32_t> texture_index_map;
+    std::unordered_map<std::string, TextureMetadata> texture_map;
     uint32_t current_texture_index = 0;
 
     for (size_t i = 0; i < scene->mNumMaterials; i++) {
@@ -176,9 +195,9 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
         const aiMaterial* mat = scene->mMaterials[i];
         uint32_t map_bits = 0;
 
-        materials[i].base_colour = process_base_colour(mat, map_bits, texture_index_map, current_texture_index);
-        materials[i].emission = process_emission(mat, map_bits, texture_index_map, current_texture_index);
-        Vec3 roughness_metalness_normal = process_roughness_metalness_normal(mat, map_bits, texture_index_map, current_texture_index);
+        materials[i].base_colour = process_base_colour(mat, map_bits, texture_map, current_texture_index);
+        materials[i].emission = process_emission(mat, map_bits, texture_map, current_texture_index);
+        Vec3 roughness_metalness_normal = process_roughness_metalness_normal(mat, map_bits, texture_map, current_texture_index);
 
         float map_bits_as_float;
         memcpy(&map_bits_as_float, &map_bits, 4);
@@ -186,10 +205,13 @@ static void process_materials(const aiScene* scene, std::vector<PbrMaterial>& ma
         materials[i].rough_metal_normal_map_bits = Vec4(roughness_metalness_normal, map_bits_as_float);
     }
 
-    texture_paths.resize(texture_index_map.size());
+    textures.resize(texture_map.size());
 
-    for (const auto& texture_index : texture_index_map)
-        texture_paths[texture_index.second] = texture_index.first;
+    for (const auto& metadata : texture_map) {
+        textures[metadata.second.index] = std::move(TextureData(full_path(base_directory, metadata.first)));
+        if (metadata.second.is_srgb)
+            textures[metadata.second.index].convert_from_srgb();
+    }
 }
 
 static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std::vector<ObjectVariant>& object_variants)
@@ -238,6 +260,33 @@ static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std:
     }
 }
 
+static void process_lights(
+    const aiScene* scene,
+    std::vector<PointLight>& point_lights,
+    std::vector<DirectionalLight>& directional_lights)
+{
+
+    for (size_t i = 0; i < scene->mNumLights; i++) {
+        const aiLight* light = scene->mLights[i];
+        if (light->mType == aiLightSource_POINT) {
+
+            aiVector3D p = light->mPosition;
+            aiColor3D c = light->mColorDiffuse;
+
+            PointLight point_light(Vec3(p.x, p.y, p.z), Vec3(c.r, c.g, c.b));
+            point_lights.push_back(point_light);
+
+        } else if (light->mType == aiLightSource_DIRECTIONAL) {
+
+            aiVector3D d = light->mDirection;
+            aiColor3D c = light->mColorDiffuse;
+
+            DirectionalLight directional_light(Vec3(d.x, d.y, d.z), Vec3(c.r, c.g, c.b));
+            directional_lights.push_back(directional_light);
+        }
+    }
+}
+
 static void process_scene_node(std::vector<ObjectVariant>& variants, Camera& camera, const aiScene* scene, const aiNode* node, const Mat4& parent_transform)
 {
     const Mat4 transform = parent_transform * convert_matrix(node->mTransformation);
@@ -264,15 +313,17 @@ std::string Scene::scene_details()
     for (const ObjectVariant& variant : get_object_variants()) {
         instance_count += variant.instances.size();
         triangle_count += variant.instances.size() * meshes[variant.mesh_index].get_indexed_triangles().size();
-        emitter_count += get_materials()[variant.material_index].is_emitter() ? 1 : 0;
+        emitter_count += (get_materials()[variant.material_index].is_emitter() ? 1 : 0) * variant.instances.size();
     }
 
     std::stringstream stream;
     stream << "Scene has:\n"
            << "    " << get_object_variants().size() << " meshes\n"
            << "    " << get_materials().size() << " materials\n"
-           << "    " << emitter_count << " emitters\n"
-           << "    " << get_texture_paths().size() << " textures\n"
+           << "    " << point_lights.size() << " point lights\n"
+           << "    " << directional_lights.size() << " directional lights\n"
+           << "    " << emitter_count << " instances with emission\n"
+           << "    " << get_textures().size() << " textures\n"
            << "    " << instance_count << " instances\n"
            << "    " << unique_vertex_count << " unique vertices\n"
            << "    " << unique_triangle_count << " unique triangles\n"
@@ -321,9 +372,11 @@ void Scene::from_file(const std::string& path, Camera& camera)
         assert(camera.far > camera.near);
     }
 
-    process_materials(scene, materials, texture_paths);
+    process_materials(scene, materials, textures, directory_of(path));
 
     process_meshes(scene, meshes, object_variants);
+
+    process_lights(scene, point_lights, directional_lights);
 
     process_scene_node(object_variants, camera, scene, scene->mRootNode, Mat4(1.0f));
 
