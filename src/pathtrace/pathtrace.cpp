@@ -2,8 +2,6 @@
 
 #include <cassert>
 
-constexpr uint32_t MAX_TEXTURE_COUNT = 256;
-
 std::vector<VkDescriptorPoolSize> PathTracer::get_descriptor_pool_sizes()
 {
     return { { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 },

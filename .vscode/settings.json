@@ -72,6 +72,7 @@
         "format": "cpp",
         "cassert": "cpp",
         "bitset": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "codecvt": "cpp"
     }
 }

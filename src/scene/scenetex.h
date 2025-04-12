@@ -10,6 +10,7 @@ struct Texture
     VkFormat format;
     VkImageView view;
     VkMemoryRequirements memory_requirements;
+    VkDeviceSize image_buffer_offset;
 };
 
 class SceneTextures

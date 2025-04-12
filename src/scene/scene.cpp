@@ -177,6 +177,28 @@ static Vec3 process_roughness_metalness_normal(
     return result;
 }
 
+static void process_camera(
+    const aiScene* scene,
+    Camera& camera)
+{
+    std::cout << "Found " << scene->mNumCameras << " camera(s) in scene." << std::endl;
+    if (scene->mNumCameras > 0) {
+        const auto& scene_cam = scene->mCameras[0];
+        Mat4 transform = convert_matrix(scene->mRootNode->mTransformation * scene->mRootNode->FindNode(scene_cam->mName)->mTransformation);
+        Vec4 pos = Vec4(scene_cam->mPosition.x, scene_cam->mPosition.y, scene_cam->mPosition.z, 1.0f);
+        pos = transform * pos;
+        camera.position = Vec3(pos);
+        aiMatrix4x4 m;
+        scene_cam->GetCameraMatrix(m);
+        camera.rotation = Quaternion(convert_matrix(m));
+        camera.aspect_ratio = scene_cam->mAspect;
+        camera.near = scene_cam->mClipPlaneNear;
+        camera.far = scene_cam->mClipPlaneFar;
+        assert(camera.near > 0.0f);
+        assert(camera.far > camera.near);
+    }
+}
+
 static void process_materials(
     const aiScene* scene,
     std::vector<PbrMaterial>& materials,
@@ -208,9 +230,7 @@ static void process_materials(
     textures.resize(texture_map.size());
 
     for (const auto& metadata : texture_map) {
-        textures[metadata.second.index] = std::move(TextureData(full_path(base_directory, metadata.first)));
-        if (metadata.second.is_srgb)
-            textures[metadata.second.index].convert_from_srgb();
+        textures[metadata.second.index] = std::move(TextureData(full_path(base_directory, metadata.first), metadata.second.is_srgb));
     }
 }
 
@@ -355,24 +375,9 @@ void Scene::from_file(const std::string& path, Camera& camera)
 
     resource_directory = directory_of(path);
 
-    std::cout << "Found " << scene->mNumCameras << " camera(s) in scene." << std::endl;
-    if (scene->mNumCameras > 0) {
-        const auto& scene_cam = scene->mCameras[0];
-        Mat4 transform = convert_matrix(scene->mRootNode->mTransformation * scene->mRootNode->FindNode(scene_cam->mName)->mTransformation);
-        Vec4 pos = Vec4(scene_cam->mPosition.x, scene_cam->mPosition.y, scene_cam->mPosition.z, 1.0f);
-        pos = transform * pos;
-        camera.position = Vec3(pos);
-        aiMatrix4x4 m;
-        scene_cam->GetCameraMatrix(m);
-        camera.rotation = Quaternion(convert_matrix(m));
-        camera.aspect_ratio = scene_cam->mAspect;
-        camera.near = scene_cam->mClipPlaneNear;
-        camera.far = scene_cam->mClipPlaneFar;
-        assert(camera.near > 0.0f);
-        assert(camera.far > camera.near);
-    }
+    process_camera(scene, camera);
 
-    process_materials(scene, materials, textures, directory_of(path));
+    process_materials(scene, materials, textures, resource_directory);
 
     process_meshes(scene, meshes, object_variants);
 

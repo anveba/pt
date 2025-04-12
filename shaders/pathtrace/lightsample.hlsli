@@ -50,7 +50,7 @@ float3 sample_light(
     in StructuredBuffer<float4> vertex_buffer,
     in StructuredBuffer<InstanceData> instance_buffer,
     in StructuredBuffer<PbrMaterial> material_buffer,
-    in Texture2D<float4> textures[256], in SamplerState texture_sampler,
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler,
     uint light_count, inout Rng rng, in float3 pt,
     out float3 light_dir, out float light_dist, out float pdf, out bool is_delta_light) 
 {

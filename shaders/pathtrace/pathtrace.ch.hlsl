@@ -13,7 +13,7 @@ StructuredBuffer<uint> index_buffer : register(t4);
 StructuredBuffer<InstanceData> instance_buffer : register(t5);
 StructuredBuffer<PbrMaterial> material_buffer : register(t6);
 SamplerState texture_sampler : register(s7);
-Texture2D<float4> textures[256] : register(t8);
+Texture2D<float4> textures[MAX_TEXTURE_COUNT] : register(t8);
 StructuredBuffer<uint> light_sampler : register(t9);
 
 struct BrdfEvalInput {

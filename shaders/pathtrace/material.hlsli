@@ -22,7 +22,7 @@ PbrMaterial get_material(in StructuredBuffer<PbrMaterial> material_buffer, uint 
 
 float3 get_emission(
     in PbrMaterial material, in float2 uv, 
-    in Texture2D<float4> textures[256], in SamplerState texture_sampler) 
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler) 
 {
     if (map_bits(material) & EMISSION_MAP_BIT)
         return textures[asuint(material.emission.x)].SampleLevel(texture_sampler, uv, 0).rgb * material.emission.a;
@@ -32,7 +32,7 @@ float3 get_emission(
 
 float4 get_base_colour(
     in PbrMaterial material, in float2 uv,
-    in Texture2D<float4> textures[256], in SamplerState texture_sampler) 
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler) 
 {
     if (map_bits(material) & BASE_COLOUR_MAP_BIT)
         return textures[asuint(material.base_colour.x)].SampleLevel(texture_sampler, uv, 0);
@@ -42,7 +42,7 @@ float4 get_base_colour(
 
 void get_roughness_metalness_normal(
     in PbrMaterial material, in float2 uv, 
-    in Texture2D<float4> textures[256], in SamplerState texture_sampler,
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler,
     out float roughness, out float metalness, out float3 normal) 
 {
     if (map_bits(material) & ROUGHNESS_METALNESS_MAP_BIT) {
