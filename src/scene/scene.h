@@ -40,6 +40,8 @@ class Scene
     inline const std::string& get_environment_map_path() const { return environment_map_path; }
     inline const std::string& get_resource_directory() const { return resource_directory; }
 
+    size_t light_count() const;
+
     void from_file(const std::string& path, Camera& camera);
     std::string scene_details();
 

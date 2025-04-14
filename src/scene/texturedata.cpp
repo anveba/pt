@@ -92,17 +92,17 @@ static void decompress_bc1(uint8_t* dest, uint8_t* source, uint32_t width, uint3
                            ((colour0_raw & green_mask) >> green_shift) << green_offset,
                            ((colour0_raw & blue_mask) >> blue_shift) << blue_offset,
                            255);
-        colours[0] = Uint4(((colour1_raw & red_mask) >> red_shift) << red_offset,
+        colours[1] = Uint4(((colour1_raw & red_mask) >> red_shift) << red_offset,
                            ((colour1_raw & green_mask) >> green_shift) << green_offset,
                            ((colour1_raw & blue_mask) >> blue_shift) << blue_offset,
                            255);
 
         if (has_alpha) {
-            colours[3] = Uint4(0, 0, 0, 255);
-            colours[2] = colours[0] / uint32_t(2) + colours[1] / uint32_t(2);
+            colours[3] = Uint4(0, 0, 0, 0);
+            colours[2] = glm::min((colours[0] + colours[1]) / 2u, 255u);
         } else {
-            colours[2] = colours[0] / uint32_t(3) + colours[1] / uint32_t(3);
-            colours[3] = uint32_t(2) * colours[0] / uint32_t(3) + uint32_t(2) * colours[1] / uint32_t(3);
+            colours[2] = glm::min((2u * colours[0] + colours[1]) / 3u, 255u);
+            colours[3] = glm::min(((colours[0] + 2u * colours[1])) / 3u, 255u);
         }
 
         for (size_t y = 0; y < 4; y++) {
@@ -136,6 +136,7 @@ static void decompress(
     uint32_t channel_count,
     bool has_alpha)
 {
+    std::cout << "Compression scheme: " << scheme << std::endl;
     if (scheme < 0) {
         memcpy(dest, source, width * height * channel_count);
     } else if (scheme == 1) {
@@ -174,13 +175,17 @@ TextureData::TextureData(const std::string& path, bool is_srgb)
         width = image.width;
         height = image.height;
 
-        int compression_scheme;
-        format = get_vulkan_format_from_dx(image.format, channel_count, compression_scheme);
+        // int compression_scheme;
+        // format = get_vulkan_format_from_dx(image.format, channel_count, compression_scheme);
 
-        data_size = width * height * channel_count;
+        // data_size = width * height * channel_count;
+        data_size = image.mipmaps.front().size();
         data = new uint8_t[data_size];
+        memcpy(data, image.mipmaps.front().data(), data_size);
+        format = dds::getVulkanFormat(image.format, image.supportsAlpha);
+        channel_count = 4; // TODO
 
-        decompress(compression_scheme, data, image.mipmaps.front().data(), width, height, channel_count, image.supportsAlpha);
+        // decompress(compression_scheme, data, image.mipmaps.front().data(), width, height, channel_count, image.supportsAlpha);
 
     } else {
 

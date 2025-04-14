@@ -351,6 +351,20 @@ std::string Scene::scene_details()
     return stream.str();
 }
 
+size_t Scene::light_count() const
+{
+    size_t emitter_count = 0;
+    for (size_t i = 0; i < get_object_variants().size(); i++) {
+
+        const ObjectVariant& variant = get_object_variants()[i];
+
+        if (get_materials()[variant.material_index].is_emitter()) 
+            emitter_count += variant.instances.size();
+        
+    }
+    return emitter_count + point_lights.size() + directional_lights.size();
+}
+
 void Scene::from_file(const std::string& path, Camera& camera)
 {
     clear();

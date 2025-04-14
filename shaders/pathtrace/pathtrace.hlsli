@@ -27,7 +27,7 @@ struct Attributes
 
 struct RayPayload
 {
-    // On input, the w-component is 1 if the path terminates, else 0.
+    // The w-component is 1 if the path terminates, else 0.
     [[vk::location(0)]] float4 throughput; 
     [[vk::location(1)]] float3 radiance;
     [[vk::location(2)]] Rng rng;

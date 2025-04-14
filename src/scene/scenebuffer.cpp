@@ -81,7 +81,7 @@ void SceneBuffer::build(CommandPool& command_pool, const Scene& scene)
     const size_t index_region_size = round_up_to<size_t>(tri_count * sizeof(IndexedTriangle), alignment);
     const size_t instance_region_size = round_up_to<size_t>(instance_count * sizeof(InstanceData), alignment);
     const size_t material_region_size = round_up_to<size_t>(material_count * sizeof(PbrMaterial), alignment);
-    const size_t light_sampler_size = round_up_to<size_t>(TableLightSampler::size_in_bytes(scene), alignment);
+    const size_t light_sampler_size = round_up_to<size_t>(std::max(TableLightSampler::size_in_bytes(scene), (size_t)1), alignment); // Cannot be zero, so padding is added, if necessary.
 
     const size_t total_buffer_size = vertex_region_size +
                                      index_region_size +
@@ -138,7 +138,7 @@ void SceneBuffer::build(CommandPool& command_pool, const Scene& scene)
     PbrMaterial* const material_data = (PbrMaterial*)((uint8_t*)instance_data + instance_region_size);
     memcpy(material_data, scene.get_materials().data(), scene.get_materials().size() * sizeof(PbrMaterial));
 
-    if (light_sampler_size > 0) {
+    if (scene.light_count() > 0) {
         uint8_t* const light_sampler_data = ((uint8_t*)material_data + material_region_size);
         TableLightSampler light_sampler(scene, instance_offsets.data());
         light_sampler.copy(light_sampler_data);

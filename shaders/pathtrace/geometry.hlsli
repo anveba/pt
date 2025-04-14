@@ -57,10 +57,10 @@ void get_vertex_vectors(
     float3 ac = v_c.position - v_a.position;
     true_normal = cross(ab, ac);
 
-    if (duv_ab.x == 0.0 && duv_ab.y == 0.0 && duv_ac.x == 0.0 && duv_ac.y == 0.0) {
-        tangent = cross(true_normal, abs(true_normal.y) > 1e-5 ? float3(1.0, 0.0, 0.0) : float3(0.0, 1.0, 0.0));
+    float denom = duv_ab.x * duv_ac.y - duv_ac.x * duv_ab.y;
+    if (abs(denom) < 1e-5) {
+        tangent = cross(normal, abs(normal.y) > 1e-5 ? float3(1.0, 0.0, 0.0) : float3(0.0, 1.0, 0.0));
     } else {
-        float denom = duv_ab.x * duv_ac.y - duv_ac.x * duv_ab.y;
         tangent = (duv_ac.y * ab - duv_ab.y * ac) / denom;
         tangent = tangent - dot(tangent, normal) * normal;
     }
