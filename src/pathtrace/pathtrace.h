@@ -15,17 +15,19 @@
 
 struct PathTraceUniformData
 {
-    alignas(16) Vec3 environment_colour;
     alignas(16) Mat4 inv_view;
     alignas(16) Mat4 inv_proj;
     alignas(4) float near;
     alignas(4) float far;
-    alignas(4) float old_samples_mult;
-    alignas(4) float new_samples_mult;
-    alignas(16) Uint4 seed;
+    alignas(4) float focus_dist;
+    alignas(4) float lens_radius;
+
+    alignas(4) uint32_t sample_index;
     alignas(4) uint32_t samples;
     alignas(4) uint32_t max_bounces;
+
     alignas(4) uint32_t light_count;
+    alignas(16) Vec3 environment_colour;
 };
 
 class PathTracer
@@ -42,7 +44,7 @@ class PathTracer
 
     uint32_t get_samples_per_render() { return uniform_data.samples; }
     uint32_t get_max_bounces() { return uniform_data.max_bounces; }
-    uint32_t accumulated_samples() { return samples_taken; }
+    uint32_t get_sample_index() { return uniform_data.sample_index; }
     const StorageImage& get_accumulation_image() { return accumulation_image; }
 
     void set_scene(CommandPool& command_pool, const Scene& scene);
@@ -75,9 +77,6 @@ class PathTracer
     VkBuffer shader_group_buffer;
     VkDeviceMemory shader_group_buffer_memory;
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shader_groups;
-
-    uint32_t samples_taken;
-    Xshiro128 rng;
 
     void create_shader_binding_tables();
     void create_pipeline();

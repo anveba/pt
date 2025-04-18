@@ -1,23 +1,26 @@
 #ifndef PATHTRACE_HLSLI_INCLUDED
 #define PATHTRACE_HLSLI_INCLUDED
 
-#include "rng.hlsli"
+#include "sample.hlsli"
 
 #define ORIGIN_OFFSET (1e-5)
 
 struct UniformBufferObject
 {
-    float4 environment_colour;
     float4x4 inv_view;
     float4x4 inv_proj;
     float near;
     float far;
-    float old_samples_mult;
-    float new_samples_mult;
-    uint4 seed;
+    float focus_dist;
+    float lens_radius;
+
+    uint sample_index;
     uint samples;
     uint max_bounces;
+
     uint light_count;
+    float4 environment_colour;
+
 };
 
 struct Attributes
@@ -30,7 +33,7 @@ struct RayPayload
     // The w-component is 1 if the path terminates, else 0.
     [[vk::location(0)]] float4 throughput; 
     [[vk::location(1)]] float3 radiance;
-    [[vk::location(2)]] Rng rng;
+    [[vk::location(2)]] SAMPLER sampler;
     [[vk::location(3)]] float3 intersection;
     [[vk::location(4)]] float3 incoming_direction;
     // The first component is the PDF of the BRDF. It will be -1 for the first ray. 
@@ -43,10 +46,9 @@ struct ShadowRayPayload
     [[vk::location(0)]] bool is_occluded; 
 };
 
-RayPayload create_ray_payload(in Rng rng) {
+RayPayload create_ray_payload() {
     RayPayload payload;
     payload.radiance.rgb = 0.0;
-    payload.rng = rng;
     return payload;
 }
 

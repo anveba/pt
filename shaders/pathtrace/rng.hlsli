@@ -19,6 +19,7 @@ uint lcg_step(inout uint z, uint a, uint c)
     return z;
 }
 
+// From GPU Gems 3, chapter 37
 float hybrid_taus(inout uint4 state)
 {
     return 2.3283064365387e-10 * (            
@@ -37,6 +38,7 @@ float xorshift(inout uint rng_state)
     return (float)rng_state / (float)0xFFFFFFFF;
 }
 
+// Uses Tiny Encryption Algorithm.
 Rng create_rng(uint4 v0, uint4 v1) {
     Rng rng;
     const uint n = 16;
@@ -50,8 +52,38 @@ Rng create_rng(uint4 v0, uint4 v1) {
     return rng;
 }
 
+uint rotl(uint x, int k)
+{
+    return (x << k) | (x >> (32 - k));
+}
+
+// References: https://prng.di.unimi.it/
+//             https://en.wikipedia.org/wiki/Xorshift
+uint xshiro128(inout uint4 s)
+{
+    const uint32_t result = rotl(s.x + s.w, 7) + s.x;
+
+    const uint32_t t = s.y << 9;
+
+    s.zwyx ^= s;
+
+    s.z ^= t;
+
+    s.w = rotl(s.w, 11);
+
+    return result;
+}
+
 float next_float(inout Rng rng) {
     return hybrid_taus(rng.state);
+}
+
+uint splitmix(inout uint state)
+{
+    uint z = (state += 0x9e3779b9);
+    z = (z ^ (z >> 16)) * 0x85ebca6b;
+    z = (z ^ (z >> 13)) * 0xc2b2ae35;
+    return z ^ (z >> 16);
 }
 
 #endif

@@ -139,7 +139,7 @@ void PathTraceDisplayer::end_render()
 void PathTraceDisplayer::get_debug_info(RenderDebugInfo& info)
 {
     info = {};
-    info.samples = path_tracer.accumulated_samples();
+    info.samples = path_tracer.get_sample_index();
 }
 
 void PathTraceDisplayer::set_settings(const UiControlPanel& control_panel)

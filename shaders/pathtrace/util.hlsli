@@ -3,6 +3,28 @@
 
 #define PI (3.141592654)
 #define INFINITY (1.0 / 0.0)
+#define JUST_BELOW_ONE (asfloat(0x3F7FFFFF))
+
+uint hash_combine(uint seed, uint x)
+{
+    return seed ^ (x + (seed << 6) + (seed >> 2));
+}
+
+uint4 hash_combine(uint4 seed, uint x)
+{
+    return seed ^ (x + (seed << 6) + (seed >> 2));
+}
+
+uint hash(uint x)
+{
+    // Last bit of murmurhash3
+    x ^= x >> 16;
+    x *= 0x85ebca6bu;
+    x ^= x >> 13;
+    x *= 0xc2b2ae35u;
+    x ^= x >> 16;
+    return x;
+}
 
 float sq(float x) {
     return x * x;

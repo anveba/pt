@@ -177,6 +177,95 @@ static Vec3 process_roughness_metalness_normal(
     return result;
 }
 
+static Vec4 process_specular(
+    const aiMaterial* mat,
+    uint32_t& map_bits,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
+    uint32_t& current_texture_index)
+{
+    Vec4 result;
+
+    std::optional<uint32_t> map = process_texture(mat, aiTextureType_SPECULAR, texture_map, current_texture_index);
+
+    if (map) {
+        map_bits |= SPECULAR_MAP_BIT;
+        float index_as_float;
+        memcpy(&index_as_float, &map.value(), 4);
+        result.x = index_as_float;
+    } else {
+        aiColor3D specular_colour;
+        if (mat->Get(AI_MATKEY_SPECULAR_FACTOR, specular_colour) != aiReturn_SUCCESS)
+            specular_colour = aiColor3D(0.5f, 0.5f, 0.5f);
+        result.x = specular_colour.r;
+        result.y = specular_colour.g;
+        result.z = specular_colour.b;
+    }
+
+    return result;
+}
+
+static Vec4 process_sheen(
+    const aiMaterial* mat,
+    uint32_t& map_bits,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
+    uint32_t& current_texture_index)
+{
+    Vec4 result;
+
+    std::optional<uint32_t> map = process_texture(mat, aiTextureType_SHEEN, texture_map, current_texture_index);
+
+    if (map) {
+        map_bits |= SHEEN_MAP_BIT;
+        float index_as_float;
+        memcpy(&index_as_float, &map.value(), 4);
+        result.x = index_as_float;
+    } else {
+        aiColor3D sheen_colour;
+        if (mat->Get(AI_MATKEY_SHEEN_COLOR_FACTOR, sheen_colour) != aiReturn_SUCCESS)
+            sheen_colour = aiColor3D(0.0f, 0.0f, 0.0f);
+        result.x = sheen_colour.r;
+        result.y = sheen_colour.g;
+        result.z = sheen_colour.b;
+    }
+
+    return result;
+}
+
+static Vec4 process_clearcoat_anisotropy(
+    const aiMaterial* mat,
+    uint32_t& map_bits,
+    std::unordered_map<std::string, TextureMetadata>& texture_map,
+    uint32_t& current_texture_index)
+{
+    Vec4 result;
+
+    std::optional<uint32_t> map = process_texture(mat, aiTextureType_CLEARCOAT, texture_map, current_texture_index);
+
+    if (map) {
+        map_bits |= CLEARCOAT_MAP_BIT;
+        float index_as_float;
+        memcpy(&index_as_float, &map.value(), 4);
+        result.x = index_as_float;
+    } else {
+        float clearcoat;
+        if (mat->Get(AI_MATKEY_CLEARCOAT_FACTOR, clearcoat) != aiReturn_SUCCESS)
+            clearcoat = 0.0f;
+        result.x = clearcoat;
+    }
+
+    float cc_roughness;
+    if (mat->Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, cc_roughness) != aiReturn_SUCCESS)
+        cc_roughness = 0.5f;
+    result.y = cc_roughness;
+
+    float anisotropy;
+    if (mat->Get(AI_MATKEY_ANISOTROPY_FACTOR, anisotropy) != aiReturn_SUCCESS)
+        anisotropy = 0.0f;
+    result.z = anisotropy;
+
+    return result;
+}
+
 static void process_camera(
     const aiScene* scene,
     Camera& camera)
@@ -196,6 +285,29 @@ static void process_camera(
         camera.far = scene_cam->mClipPlaneFar;
         assert(camera.near > 0.0f);
         assert(camera.far > camera.near);
+    }
+}
+
+void load_textures(const aiScene* scene, const std::unordered_map<std::string, TextureMetadata>& texture_map, std::vector<TextureData>& textures, const std::string& base_directory)
+{
+    for (const auto& t : texture_map) {
+        auto embedded = scene->GetEmbeddedTextureAndIndex(t.first.c_str());
+        if (embedded.first == nullptr) {
+            textures[t.second.index] = std::move(TextureData(
+                full_path(base_directory, t.first), t.second.is_srgb));
+        } else {
+            auto embedded_data = scene->mTextures[embedded.second];
+            if (!strcmp(embedded_data->achFormatHint, "rgba8888")) {
+                textures[t.second.index] = std::move(TextureData(
+                    (uint8_t*)embedded_data->pcData,
+                    embedded_data->mWidth * embedded_data->mHeight * 4,
+                    embedded_data->mWidth,
+                    embedded_data->mHeight,
+                    t.second.is_srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM));
+            } else {
+                throw std::runtime_error("Unsupported embedded texture format: " + std::to_string(embedded_data->mHeight));
+            }
+        }
     }
 }
 
@@ -220,6 +332,9 @@ static void process_materials(
         materials[i].base_colour = process_base_colour(mat, map_bits, texture_map, current_texture_index);
         materials[i].emission = process_emission(mat, map_bits, texture_map, current_texture_index);
         Vec3 roughness_metalness_normal = process_roughness_metalness_normal(mat, map_bits, texture_map, current_texture_index);
+        materials[i].specular = process_specular(mat, map_bits, texture_map, current_texture_index);
+        materials[i].sheen = process_sheen(mat, map_bits, texture_map, current_texture_index);
+        materials[i].cc_ccrgh_aniso = process_clearcoat_anisotropy(mat, map_bits, texture_map, current_texture_index);
 
         float map_bits_as_float;
         memcpy(&map_bits_as_float, &map_bits, 4);
@@ -229,9 +344,7 @@ static void process_materials(
 
     textures.resize(texture_map.size());
 
-    for (const auto& metadata : texture_map) {
-        textures[metadata.second.index] = std::move(TextureData(full_path(base_directory, metadata.first), metadata.second.is_srgb));
-    }
+    load_textures(scene, texture_map, textures, base_directory);
 }
 
 static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std::vector<ObjectVariant>& object_variants)
@@ -358,9 +471,8 @@ size_t Scene::light_count() const
 
         const ObjectVariant& variant = get_object_variants()[i];
 
-        if (get_materials()[variant.material_index].is_emitter()) 
+        if (get_materials()[variant.material_index].is_emitter())
             emitter_count += variant.instances.size();
-        
     }
     return emitter_count + point_lights.size() + directional_lights.size();
 }
@@ -385,7 +497,7 @@ void Scene::from_file(const std::string& path, Camera& camera)
             aiProcess_OptimizeGraph);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-        std::runtime_error("Could not load scene at " + path + ": " + importer.GetErrorString());
+        throw std::runtime_error("Could not load scene at " + path + ": " + importer.GetErrorString());
 
     resource_directory = directory_of(path);
 

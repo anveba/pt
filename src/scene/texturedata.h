@@ -9,6 +9,7 @@ class TextureData
   public:
     TextureData();
     TextureData(const std::string& path, bool is_srgb);
+    TextureData(const uint8_t* data, size_t data_size, uint32_t width, uint32_t height, VkFormat format);
     TextureData(TextureData&& other);
     ~TextureData();
 
@@ -25,7 +26,7 @@ class TextureData
 
   private:
     uint8_t* data;
-    uint32_t width, height, channel_count;
+    uint32_t width, height;
     size_t data_size;
     VkFormat format;
 

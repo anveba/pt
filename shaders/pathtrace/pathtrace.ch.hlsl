@@ -20,11 +20,15 @@ struct BrdfEvalInput {
     float3 base_colour;
     float2 alpha;
     float metalness;
+    float3 specular;
+    float3 sheen;
+    float clearcoat;
+    float clearcoat_alpha;
 };
 
-float3 fresnel_schlick(float cos_d, float3 f0) {
+float3 fresnel_schlick(float cos_d) {
     float base = 1.0 - cos_d;
-    return f0 + (1.0 - f0) * base * base * base * base * base;
+    return base * base * base * base * base;
 }
 
 float lambda(float3 m, float2 alpha) {
@@ -71,17 +75,26 @@ float get_diffuse_cdf(float metalness) {
 
 float3 evaluate_brdf(in BrdfEvalInput input, float3 i, float3 o, float3 m, out float pdf) {
 
-    float3 f0 = lerp(0.05, input.base_colour.rgb, input.metalness);
+    float3 f0 = lerp(input.specular * 0.08, input.base_colour.rgb, input.metalness);
     float cos_d = dot(m, o);
 
-    float3 f = fresnel_schlick(cos_d, f0);
+    float3 f = fresnel_schlick(cos_d);
     float g = masking(o, i, input.alpha);
     float d = distribution(m, input.alpha);
 
-    float3 specular = (d * f * g) / (4.0 * cos_theta(i) * cos_theta(o));
+    float3 specular = (d * lerp(f0, 1.0, f) * g) / (4.0 * cos_theta(i) * cos_theta(o));
 
-    // float f_d90 = 0.5 + 2.0 * roughness * cos_d * cos_d;
-    float3 diffuse = (1.0 - input.metalness) * input.base_colour.rgb / PI * (1.0 - f);// * diffuse_fresnel(f_d90, cos_theta(i)) * diffuse_fresnel(f_d90, cos_theta(o));
+    float3 sheen = input.sheen * f;
+    float3 diffuse = (1.0 - input.metalness) * (input.base_colour.rgb + sheen) / PI * (1.0 - f);
+
+    float3 clearcoat;
+    if (input.clearcoat > 0.0) {
+        float g_clearcoat = masking(o, i, input.clearcoat_alpha);
+        float d_clearcoat = distribution(m, input.clearcoat_alpha);
+        clearcoat = 0.25 * input.clearcoat * d_clearcoat * lerp(0.04, 1.0, f) * g_clearcoat;
+    } else {
+        clearcoat = 0.0;
+    }
 
     const float diffuse_cdf = get_diffuse_cdf(input.metalness);
     float pdf_diffuse = cos_theta(i) / PI;
@@ -92,19 +105,20 @@ float3 evaluate_brdf(in BrdfEvalInput input, float3 i, float3 o, float3 m, out f
     return specular + diffuse;
 }
 
-float3 sample_direction(float3 o, float2 alpha, float metalness, inout Rng rng, 
+float3 sample_direction(float3 o, float2 alpha, float metalness, inout SAMPLER sampler, 
     out float3 m, out float w, out float pdf) {
 
     float3 i;
 
     const float diffuse_cdf = get_diffuse_cdf(metalness);
+    bool sample_diffuse = sample_1d(sampler) < diffuse_cdf;
+    float2 dir_sample = sample_2d(sampler);
 
-    float u = next_float(rng);
-    if (u < diffuse_cdf) {
-        i = cosine_weighted_rand_dir(rng);
+    if (sample_diffuse) {
+        i = cosine_weighted_rand_dir(dir_sample);
         m = normalize(o + i);
     } else {
-        m = sample_visible_micronormal(o, alpha, rng);
+        m = sample_visible_micronormal(o, alpha, dir_sample);
         i = 2.0 * dot(o, m) * m - o;
     }
 
@@ -118,14 +132,14 @@ float3 sample_direction(float3 o, float2 alpha, float metalness, inout Rng rng,
     // https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/readings/veach.pdf
     pdf_diffuse *= diffuse_cdf;
     pdf_gtr *= (1.0 - diffuse_cdf);
-    pdf = (u < diffuse_cdf) ? pdf_diffuse : pdf_gtr;
+    pdf = sample_diffuse ? pdf_diffuse : pdf_gtr;
     w = pdf / (pdf_diffuse + pdf_gtr); // TODO compare heuristics
 
     return i;
 }
 
 float3 light_contribution(
-    in BrdfEvalInput brdf_input, float3 o, float3 intersection, in float3x3 from_world_space, inout Rng rng) 
+    in BrdfEvalInput brdf_input, float3 o, float3 intersection, in float3x3 from_world_space, inout SAMPLER sampler) 
 {
     if (ubo.light_count == 0) 
         return 0.0;
@@ -143,7 +157,7 @@ float3 light_contribution(
         textures, 
         texture_sampler, 
         ubo.light_count, 
-        rng, 
+        sampler, 
         intersection, 
         light_dir,
         light_dist, 
@@ -211,7 +225,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     if (is_first_ray(payload)) {
         add_radiance(payload, emission);
     
-    } else if (max(max(emission.r, emission.g), emission.b) > 0.0) {
+    } else if (max(max(emission.r, emission.g), emission.b) > 0.0 && dot(ObjectRayDirection(), obj_space_normal) < 0.0) {
 
         float3 world_ab = mul((float3x3)instance_data.transform, v_b.position - v_a.position);
         float3 world_ac = mul((float3x3)instance_data.transform, v_c.position - v_a.position);
@@ -235,7 +249,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     float4 base_colour = get_base_colour(material, uv, textures, texture_sampler);
 
     // Check transparency
-    if (base_colour.a < 1.0 && base_colour.a < next_float(payload.rng)) {
+    if (base_colour.a < sample_1d(payload.sampler)) {
         float3 intersection = WorldRayOrigin() + WorldRayDirection() * (RayTCurrent() + ORIGIN_OFFSET);
         set_next_ray(payload, intersection, WorldRayDirection());
         return;
@@ -247,7 +261,13 @@ void main(inout RayPayload payload, in Attributes attributes)
     float3 mapped_normal;
     get_roughness_metalness_normal(material, uv, textures, texture_sampler, roughness, brdf_input.metalness, mapped_normal);
 
-    float anisotropy = 0.0;
+    brdf_input.specular = get_specular(material, uv, textures, texture_sampler);
+
+    float anisotropy, clearcoat_roughness;
+    get_clearcoat_anisotropy(material, uv, textures, texture_sampler, brdf_input.clearcoat, clearcoat_roughness, anisotropy);
+    brdf_input.clearcoat_alpha = lerp(0.001, 0.1, clearcoat_roughness * clearcoat_roughness);
+
+    brdf_input.sheen = get_sheen(material, uv, textures, texture_sampler);
     
     roughness = max(0.00001, roughness * roughness);
     float aspect = sqrt(1.0 - 0.9 * abs(anisotropy));
@@ -289,11 +309,11 @@ void main(inout RayPayload payload, in Attributes attributes)
     }
 
     float3 intersection = WorldRayOrigin() + WorldRayDirection() * RayTCurrent() + true_world_normal * ORIGIN_OFFSET;
-    add_radiance(payload, light_contribution(brdf_input, o, intersection, from_world_space, payload.rng));
+    add_radiance(payload, light_contribution(brdf_input, o, intersection, from_world_space, payload.sampler));
 
     float3 m;
     float w, pdf;
-    float3 i = sample_direction(o, brdf_input.alpha, brdf_input.metalness, payload.rng, m, w, pdf);
+    float3 i = sample_direction(o, brdf_input.alpha, brdf_input.metalness, payload.sampler, m, w, pdf);
 
     if (i.z * o.z <= 0.0) {
         no_scatter(payload);

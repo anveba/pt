@@ -67,4 +67,39 @@ void get_roughness_metalness_normal(
         normal = float3(0.0, 0.0, 1.0);
 }
 
+float3 get_specular(
+    in PbrMaterial material, in float2 uv,
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler) 
+{
+    if (map_bits(material) & SPECULAR_MAP_BIT)
+        return textures[asuint(material.specular.x)].SampleLevel(texture_sampler, uv, 0).rgb;
+    else
+        return material.specular.rgb;
+}
+
+float3 get_sheen(
+    in PbrMaterial material, in float2 uv,
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler) 
+{
+    if (map_bits(material) & SHEEN_MAP_BIT)
+        return textures[asuint(material.sheen.x)].SampleLevel(texture_sampler, uv, 0).rgb;
+    else
+        return material.sheen.rgb;
+}
+
+void get_clearcoat_anisotropy(
+    in PbrMaterial material, in float2 uv,
+    in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler,
+    out float clearcoat, out float cc_roughness, out float anisotropy) 
+{
+    if (map_bits(material) & CLEARCOAT_MAP_BIT)
+        clearcoat = textures[asuint(material.cc_ccrgh_aniso.x)].SampleLevel(texture_sampler, uv, 0).r;
+    else
+        clearcoat = material.cc_ccrgh_aniso.r;
+
+    cc_roughness = material.cc_ccrgh_aniso.g;
+    anisotropy = material.cc_ccrgh_aniso.b;
+}
+
+
 #endif

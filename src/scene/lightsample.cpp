@@ -114,9 +114,9 @@ TableLightSampler::TableLightSampler(const Scene& scene, const uint32_t* instanc
         EmitterTableMetadata table_data;
         if (mesh_table_map.count(variant.mesh_index) == 0) {
 
-            emitter_tables.emplace_back();
-
             table_data.table_index = emitter_tables.size();
+
+            emitter_tables.emplace_back();
             table_data.total_mesh_area = build_emitter_table(
                 emitter_tables.back(),
                 scene.get_meshes()[variant.mesh_index],

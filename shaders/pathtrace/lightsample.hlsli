@@ -9,20 +9,24 @@ float alias_table_pmf(in StructuredBuffer<uint> buffer, uint index, uint bin_siz
     return asfloat(buffer[bin_offset + 0]);
 }
 
-// Returns the offset of the bin's value in the buffer and the probability.
+// Returns the offset of the bin's value in the buffer and the probability. Renormalises the random number.
 uint sample_alias_table(
-    in StructuredBuffer<uint> buffer, uint bin_count, uint bin_size, uint table_offset, inout Rng rng,
-    out float p) 
+    in StructuredBuffer<uint> buffer, uint bin_count, uint bin_size, uint table_offset, 
+    inout float u, out float p) 
 {
-    uint i = min(bin_count - 1, (uint)(next_float(rng) * bin_count));
+    uint i = min(bin_count - 1, (uint)(u * bin_count));
     uint bin_offset = table_offset + i * bin_size;
 
+    u = min((u * bin_count) - i, JUST_BELOW_ONE);
     float q = asfloat(buffer[bin_offset + 1]);
 
-    // Pick alias
-    if (q < 1.0 && q < next_float(rng))  {
+    // Check if alias should be picked
+    if (u < q) {
+        u = min(u / q, JUST_BELOW_ONE);
+    } else {
         i = buffer[bin_offset + 2];
         bin_offset = table_offset + i * bin_size;
+        u = min((u - q) / (1.0 - q), JUST_BELOW_ONE);
     }
     
     p = asfloat(buffer[bin_offset + 0]);
@@ -51,10 +55,11 @@ float3 sample_light(
     in StructuredBuffer<InstanceData> instance_buffer,
     in StructuredBuffer<PbrMaterial> material_buffer,
     in Texture2D<float4> textures[MAX_TEXTURE_COUNT], in SamplerState texture_sampler,
-    uint light_count, inout Rng rng, in float3 pt,
+    uint light_count, inout SAMPLER sampler, float3 pt,
     out float3 light_dir, out float light_dist, out float pdf, out bool is_delta_light) 
 {
-    uint bin_offset = sample_alias_table(light_sampler, light_count, LIGHT_BIN_SIZE, 0, rng, pdf);
+    float3 u = float3(sample_1d(sampler), sample_2d(sampler));
+    uint bin_offset = sample_alias_table(light_sampler, light_count, LIGHT_BIN_SIZE, 0, u.x, pdf);
 
     uint light_type = light_sampler[bin_offset + 0];
 
@@ -64,12 +69,12 @@ float3 sample_light(
         uint tri_count = light_sampler[bin_offset + 2];
         uint instance_offset = light_sampler[bin_offset + 3];
         uint instance_count = light_sampler[bin_offset + 4];
-        uint instance_id = instance_offset + min(instance_count - 1, (uint)(next_float(rng) * instance_count));
 
         float p;
-        bin_offset = sample_alias_table(light_sampler, tri_count, EMITTER_BIN_SIZE, table_offset, rng, p);
+        bin_offset = sample_alias_table(light_sampler, tri_count, EMITTER_BIN_SIZE, table_offset, u.x, p);
         pdf *= p;
 
+        uint instance_id = instance_offset + min(instance_count - 1, (uint)(u.x * instance_count));
         InstanceData instance_data = get_instance_data(instance_buffer, instance_id);
 
         uint v_a_index = light_sampler[bin_offset + 0];
@@ -84,7 +89,7 @@ float3 sample_light(
         float3 p_b = (float3)mul(instance_data.transform, float4(v_b.position, 1.0));
         float3 p_c = (float3)mul(instance_data.transform, float4(v_c.position, 1.0));
 
-        float3 bary = random_barycentric(rng);
+        float3 bary = random_barycentric(u.yz);
         float3 point_on_tri = bary.x * p_a + bary.y * p_b + bary.z * p_c;
         light_dir = point_on_tri - pt;
         light_dist = 1.0;

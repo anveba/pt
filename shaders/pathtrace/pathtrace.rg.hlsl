@@ -1,5 +1,6 @@
 #include "pathtrace.hlsli"
 #include "util.hlsli"
+#include "sample.hlsli"
 
 RaytracingAccelerationStructure bvh : register(t0);
 RWTexture2D<float4> dest_image : register(u1);
@@ -11,24 +12,30 @@ void main()
     const uint3 id = DispatchRaysIndex();
     const uint3 size = DispatchRaysDimensions();
 
-    uint id_hash = (id.x << 16) | (id.y & 0x0000FFFF);
-    //TODO set better seeds
-    uint4 dispatch_seed = uint4(id_hash + 0, id_hash + 1, id_hash + 2, id_hash + 3);
-
-    RayPayload payload = create_ray_payload(create_rng(dispatch_seed, ubo.seed));
+    RayPayload payload = create_ray_payload();
 
     for (uint i = 0; i < ubo.samples; i++) {
 
-        float offset_x = next_float(payload.rng);
-        float offset_y = next_float(payload.rng);
+        sampler_start_new(payload.sampler, id.xy, ubo.sample_index + i);
 
-        const float2 film_position = float2(id.xy) + float2(offset_x, offset_y);
-        const float2 norm_coords = (film_position / float2(size.xy)) * 2.0 - 1.0;
-        const float4 target = mul(ubo.inv_proj, float4(norm_coords.xy, 1.0, 1.0));
+        float2 pixel_offset = sample_2d(payload.sampler);
+
+        const float2 film_position = id.xy + pixel_offset;
+        const float2 norm_coords = (film_position / size.xy) * 2.0 - 1.0;
+        const float4 target = mul(ubo.inv_proj, float4(norm_coords, 1.0, 1.0));
+
+        float3 ray_origin = 0.0, ray_dir = target.xyz;
+        if (ubo.lens_radius > 0.0) {
+            float2 lens_point = ubo.lens_radius * sample_concentric_disk(sample_2d(payload.sampler));
+            float t_to_focus = ubo.focus_dist / -ray_dir.z;
+            float3 focus_point = ray_origin + t_to_focus * ray_dir;
+            ray_origin = float3(lens_point, 0.0);
+            ray_dir = focus_point - ray_origin;
+        }
 
         RayDesc ray_desc;
-        ray_desc.Origin = mul(ubo.inv_view, float4(0.0, 0.0, 0.0, 1.0)).xyz;
-        ray_desc.Direction = normalize(mul(ubo.inv_view, float4(target.xyz, 0.0)).xyz);
+        ray_desc.Origin = mul(ubo.inv_view, float4(ray_origin, 1.0)).xyz;
+        ray_desc.Direction = normalize(mul(ubo.inv_view, float4(ray_dir, 0.0)).xyz);
         ray_desc.TMin = ubo.near;
         ray_desc.TMax = ubo.far;
    
@@ -58,17 +65,22 @@ void main()
                 // Apply Russian roulette
                 const float3 throughput = get_throughput(payload);
                 const float max_throughput = max(max(throughput.r, throughput.g), throughput.b);
+                float u = sample_1d(payload.sampler);
                 if (max_throughput < 1.0) {
                     float q = max(0.0, 1.0 - max_throughput);
-                    if (next_float(payload.rng) < q)
+                    if (u < q)
                         break;
                     accumulate_throughput(payload, 1.0 / (1.0 - q));
                 }
             }
         }
     }
+
+    float new_samples_mult = (float)ubo.samples / (ubo.sample_index + ubo.samples);
+    float old_samples_mult = (float)ubo.sample_index / (ubo.sample_index + ubo.samples);
+
     // This condition is used in order to zero out NaN values that may be present in the image.
     // TODO: do this in a compute shader right after image creation (or with vkCmdClearColorImage?)
-    float4 old_value = (ubo.old_samples_mult == 0.0) ? float4(0.0, 0.0, 0.0, 1.0) : ubo.old_samples_mult * dest_image[int2(id.xy)];
-    dest_image[int2(id.xy)] = old_value + ubo.new_samples_mult * float4(get_radiance(payload) / ubo.samples, 1.0);
+    float4 old_value = (ubo.sample_index == 0) ? float4(0.0, 0.0, 0.0, 1.0) : old_samples_mult * dest_image[int2(id.xy)];
+    dest_image[int2(id.xy)] = old_value + new_samples_mult * float4(get_radiance(payload) / ubo.samples, 1.0);
 }

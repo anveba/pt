@@ -21,6 +21,7 @@ class Camera
     float vertical_fov;
     float aspect_ratio;
     float near, far;
+    float focus_dist, lens_radius;
 };
 
 #endif

@@ -81,17 +81,14 @@ PathTracer::PathTracer(
     , texture_sampler(device)
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()), get_descriptor_binding_flags().data())
     , descriptor_set(descriptor_pool, descriptor_set_layout)
-    , samples_taken(0)
 {
-    Splitmix32 sm(static_cast<uint32_t>(clock()));
-    rng = Xshiro128(sm.next(), sm.next(), sm.next(), sm.next());
-
     create_pipeline();
     create_shader_binding_tables();
 
     update_scene_uniform_data(scene);
     update_descriptor_sets();
 
+    uniform_data.sample_index = 0;
     set_samples(1);
     set_max_bounces(1);
 }
@@ -326,8 +323,10 @@ void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
     uniform_data.inv_view = glm::inverse(view);
     uniform_data.near = camera.near;
     uniform_data.far = camera.far;
+    uniform_data.focus_dist = camera.focus_dist;
+    uniform_data.lens_radius = camera.lens_radius;
 
-    samples_taken = 0;
+    uniform_data.sample_index = 0;
 }
 
 void PathTracer::set_samples(uint32_t samples)
@@ -340,7 +339,7 @@ void PathTracer::set_samples(uint32_t samples)
 
 void PathTracer::set_max_bounces(uint32_t max_bounces)
 {
-    samples_taken = 0;
+    uniform_data.sample_index = 0;
     uniform_data.max_bounces = max_bounces;
 }
 
@@ -400,10 +399,7 @@ void PathTracer::set_extent(CommandPool& command_pool, uint32_t width, uint32_t 
 
 void PathTracer::update_uniforms()
 {
-    uniform_data.new_samples_mult = (float)uniform_data.samples / (samples_taken + uniform_data.samples);
-    uniform_data.old_samples_mult = (float)samples_taken / (samples_taken + uniform_data.samples);
-    uniform_data.seed = Uint4(rng.next(), rng.next(), rng.next(), rng.next());
-    samples_taken += uniform_data.samples;
-
     memcpy(uniform_buffer.get_map(), &uniform_data, sizeof(PathTraceUniformData));
+
+    uniform_data.sample_index += uniform_data.samples;
 }
