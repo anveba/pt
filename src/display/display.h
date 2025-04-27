@@ -47,6 +47,8 @@ class Display
     inline const SwapChain& get_swap_chain() { return swap_chain; }
     inline const VkSurfaceFormatKHR& get_surface_format() { return surface_format; }
 
+    void recreate_swap_chain();
+
   private:
     SwapChain swap_chain;
     VkSurfaceFormatKHR surface_format;
@@ -63,7 +65,6 @@ class Display
                            VkPresentModeKHR present_mode);
 
     void destroy_swap_chain();
-    void recreate_swap_chain();
 
     NO_COPY(Display);
 };

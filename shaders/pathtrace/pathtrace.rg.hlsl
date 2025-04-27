@@ -76,11 +76,13 @@ void main()
         }
     }
 
-    float new_samples_mult = (float)ubo.samples / (ubo.sample_index + ubo.samples);
-    float old_samples_mult = (float)ubo.sample_index / (ubo.sample_index + ubo.samples);
-
     // This condition is used in order to zero out NaN values that may be present in the image.
     // TODO: do this in a compute shader right after image creation (or with vkCmdClearColorImage?)
-    float4 old_value = (ubo.sample_index == 0) ? float4(0.0, 0.0, 0.0, 1.0) : old_samples_mult * dest_image[int2(id.xy)];
-    dest_image[int2(id.xy)] = old_value + new_samples_mult * float4(get_radiance(payload) / ubo.samples, 1.0);
+    float3 radiance = get_radiance(payload) / ubo.samples;
+    if (ubo.sample_index == 0) {
+        dest_image[int2(id.xy)] = float4(radiance, 1.0);
+    } else {
+        float3 prev = dest_image[int2(id.xy)].rgb;
+        dest_image[int2(id.xy)].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
+    }
 }

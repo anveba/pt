@@ -7,8 +7,7 @@
 class DescriptorSet
 {
   public:
-    DescriptorSet(DescriptorPool& pool,
-                  const DescriptorSetLayout& layout);
+    DescriptorSet(DescriptorPool& pool, const DescriptorSetLayout& layout);
     ~DescriptorSet();
 
     static void update_write_descriptors(Device& device, const VkWriteDescriptorSet* write_descriptors, uint32_t count);

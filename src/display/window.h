@@ -16,7 +16,7 @@ struct WindowEventInfo
 class Window
 {
   public:
-    Window(VulkanContext& context, uint32_t width, uint32_t height);
+    Window(VulkanContext& context, const std::string& title, uint32_t width, uint32_t height);
     ~Window();
 
     uint32_t get_pixel_width() { return pixel_width; }

@@ -57,7 +57,7 @@ void UserInterface::init_vulkan(DescriptorPool& descriptor_pool, IDisplayable& d
     init_info.RenderPass = displayable.get_render_pass();
     init_info.Subpass = 0;
     init_info.MinImageCount = 2;
-    init_info.ImageCount = 2;
+    init_info.ImageCount = std::max(static_cast<uint32_t>(displayable.max_in_flight()), init_info.MinImageCount);
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     init_info.Allocator = VK_NULL_HANDLE;
     init_info.CheckVkResultFn = check_vk_result;

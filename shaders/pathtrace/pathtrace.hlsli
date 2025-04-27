@@ -31,14 +31,12 @@ struct Attributes
 struct RayPayload
 {
     // The w-component is 1 if the path terminates, else 0.
-    [[vk::location(0)]] float4 throughput; 
-    [[vk::location(1)]] float3 radiance;
+    [[vk::location(0)]] float4 throughput;
+    // The w-component is the PDF of the BRDF. It will be -1 for the first ray. 
+    [[vk::location(1)]] float4 radiance;
     [[vk::location(2)]] SAMPLER sampler;
     [[vk::location(3)]] float3 intersection;
     [[vk::location(4)]] float3 incoming_direction;
-    // The first component is the PDF of the BRDF. It will be -1 for the first ray. 
-    // The second component is the PDF of the distribution that the direction was chosen from.
-    [[vk::location(5)]] float2 pdf; 
 };
 
 struct ShadowRayPayload
@@ -54,11 +52,11 @@ RayPayload create_ray_payload() {
 
 void set_new_path(inout RayPayload payload) {
     payload.throughput.rgb = 1.0;
-    payload.pdf.x = -1.0;
+    payload.radiance.w = -1.0;
 }
 
 bool is_first_ray(in RayPayload payload) {
-    return payload.pdf.x < 0.0;
+    return payload.radiance.w < 0.0;
 }
 
 bool is_final_segment(in RayPayload payload) {
@@ -74,7 +72,7 @@ void accumulate_throughput(inout RayPayload payload, float3 throughput) {
 }
 
 void add_radiance(inout RayPayload payload, float3 radiance) {
-    payload.radiance.rgb += payload.throughput.rgb * radiance;
+    payload.radiance.rgb += payload.throughput.rgb * radiance.rgb;
 }
 
 void no_scatter(inout RayPayload payload) {
@@ -96,11 +94,11 @@ float3 get_radiance(in RayPayload payload) {
 }
 
 float get_brdf_pdf(in RayPayload payload) {
-    return payload.pdf.x;
+    return payload.radiance.w;
 }
 
 void set_brdf_pdf(inout RayPayload payload, float pdf) {
-    payload.pdf.x = pdf;
+    payload.radiance.w = pdf;
 }
 
 float3 get_throughput(in RayPayload payload) {

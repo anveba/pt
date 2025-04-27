@@ -1,6 +1,7 @@
 #ifndef PATHTRACE_PTDISPLAYER_H_INCLUDED
 #define PATHTRACE_PTDISPLAYER_H_INCLUDED
 
+#include "compute/tonemap.h"
 #include "display/display.h"
 #include "display/displayable.h"
 #include "graphics/cmdpool.h"
@@ -8,7 +9,6 @@
 #include "graphics/fence.h"
 #include "graphics/storageimage.h"
 #include "pathtrace/pathtrace.h"
-#include "postprocess/tonemap.h"
 
 class PathTraceDisplayer : public IDisplayable
 {
@@ -29,9 +29,10 @@ class PathTraceDisplayer : public IDisplayable
     virtual void begin_render() override;
     virtual void end_render() override;
 
-    virtual void get_debug_info(RenderDebugInfo& info) override;
+    virtual void get_debug_info(RenderDebugInfo& info) const override;
     virtual void set_settings(const UiControlPanel& control_panel) override;
-    virtual RenderType render_type() override { return RENDER_TYPE_PATH_TRACE; };
+    virtual RenderType render_type() const override { return RENDER_TYPE_PATH_TRACE; };
+    virtual size_t max_in_flight() const override { return PathTracer::IN_FLIGHT; };
 
   private:
     virtual VkRenderPass get_render_pass() override;
@@ -39,10 +40,12 @@ class PathTraceDisplayer : public IDisplayable
 
     VkRenderPass render_pass;
 
-    Semaphore image_semaphore;
-    Semaphore render_semaphore;
-    Fence render_fence;
+    size_t current_frame;
+    InitableArray<Semaphore, PathTracer::IN_FLIGHT> image_semaphores;
+    InitableArray<Semaphore, PathTracer::IN_FLIGHT> render_semaphores;
+    InitableArray<Fence, PathTracer::IN_FLIGHT> render_fences;
 
+    StorageImage accumulation_image;
     StorageImage intermediate_image;
 
     std::vector<VkFramebuffer> framebuffers;
@@ -50,8 +53,8 @@ class PathTraceDisplayer : public IDisplayable
     Display& display;
     CommandPool& command_pool;
     PathTracer path_tracer;
-    ToneMapper tone_mapper;
-    VkCommandBuffer command_buffer;
+    ToneMapper<PathTracer::IN_FLIGHT> tone_mapper;
+    std::array<VkCommandBuffer, PathTracer::IN_FLIGHT> command_buffers;
 
     bool in_render;
 
@@ -59,7 +62,7 @@ class PathTraceDisplayer : public IDisplayable
     void destroy_framebuffers();
     void create_render_pass();
 
-    void blit_result(VkImage image, uint32_t width, uint32_t height);
+    void blit_result(VkCommandBuffer command_buffer, VkImage image, uint32_t width, uint32_t height);
 
     NO_COPY(PathTraceDisplayer);
 };

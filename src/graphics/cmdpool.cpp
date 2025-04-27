@@ -53,23 +53,21 @@ void CommandPool::end_one_time_use_command_buffer(VkCommandBuffer command_buffer
     vkFreeCommandBuffers(device.logical_handle(), command_pool, 1, &command_buffer);
 }
 
-VkCommandBuffer CommandPool::create_command_buffer()
+void CommandPool::create_command_buffers(VkCommandBuffer* handles, uint32_t count)
 {
     VkCommandBufferAllocateInfo cmd_buffer_alloc_info{};
     cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cmd_buffer_alloc_info.commandPool = command_pool;
     cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmd_buffer_alloc_info.commandBufferCount = 1;
+    cmd_buffer_alloc_info.commandBufferCount = count;
 
-    VkCommandBuffer command_buffer;
-    if (vkAllocateCommandBuffers(device.logical_handle(), &cmd_buffer_alloc_info, &command_buffer) != VK_SUCCESS)
+    if (vkAllocateCommandBuffers(device.logical_handle(), &cmd_buffer_alloc_info, handles) != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate command buffer.");
-    return command_buffer;
 }
 
-void CommandPool::destroy_command_buffer(VkCommandBuffer command_buffer)
+void CommandPool::destroy_command_buffers(const VkCommandBuffer* handles, uint32_t count)
 {
-    vkFreeCommandBuffers(device.logical_handle(), command_pool, 1, &command_buffer);
+    vkFreeCommandBuffers(device.logical_handle(), command_pool, count, handles);
 }
 
 void CommandPool::transfer_to_buffer(VkBuffer& buffer, const void* src_data, size_t size)
@@ -88,7 +86,6 @@ void CommandPool::transfer_to_buffer(VkBuffer& buffer, const void* src_data, siz
     vkUnmapMemory(device.logical_handle(), staging_buffer_memory);
 
     copy_buffer(staging_buffer, buffer, size);
-
     vkDestroyBuffer(device.logical_handle(), staging_buffer, nullptr);
     vkFreeMemory(device.logical_handle(), staging_buffer_memory, nullptr);
 }

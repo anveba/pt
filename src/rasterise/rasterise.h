@@ -4,7 +4,7 @@
 #include "graphics/cmdpool.h"
 #include "graphics/descset.h"
 #include "graphics/shader.h"
-#include "graphics/ubo.h"
+#include "graphics/sharedmem.h"
 #include "scene/scene.h"
 #include "scene/scenebuffer.h"
 
@@ -37,7 +37,7 @@ class Rasteriser
     SceneBuffer scene_buffer;
 
     RasteriseUniformData uniform_data;
-    UniformBuffer uniform_buffer;
+    SharedMemory uniform_buffer;
 
     VkRenderPass render_pass;
 

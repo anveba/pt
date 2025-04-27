@@ -18,8 +18,8 @@ class CommandPool
     void end_one_time_use_command_buffer(VkCommandBuffer command_buffer, VkQueue queue);
 
     // TODO move to its own class
-    VkCommandBuffer create_command_buffer();
-    void destroy_command_buffer(VkCommandBuffer command_buffer);
+    void create_command_buffers(VkCommandBuffer* handles, uint32_t count);
+    void destroy_command_buffers(const VkCommandBuffer* handles, uint32_t count);
 
   private:
     Device& device;

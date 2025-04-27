@@ -24,7 +24,7 @@ Rasteriser::Rasteriser(
     VkFormat depth_format)
     : device(device)
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT))
-    , uniform_buffer(device, sizeof(RasteriseUniformData))
+    , uniform_buffer(device, sizeof(RasteriseUniformData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings())
     , descriptor_set(descriptor_pool, descriptor_set_layout)
     , depth_format(depth_format)

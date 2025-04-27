@@ -28,9 +28,10 @@ class RasteriseDisplayer : public IDisplayable
     virtual void begin_render() override;
     virtual void end_render() override;
 
-    virtual void get_debug_info(RenderDebugInfo& info) override;
+    virtual void get_debug_info(RenderDebugInfo& info) const override;
     virtual void set_settings(const UiControlPanel& control_panel) override;
-    virtual RenderType render_type() override { return RENDER_TYPE_RASTERISE; };
+    virtual RenderType render_type() const override { return RENDER_TYPE_RASTERISE; };
+    virtual size_t max_in_flight() const override { return 1; };
 
   private:
     virtual VkRenderPass get_render_pass() override;
@@ -42,6 +43,7 @@ class RasteriseDisplayer : public IDisplayable
 
     std::vector<VkFramebuffer> framebuffers;
 
+    // TODO: in flight
     Semaphore image_semaphore;
     Semaphore render_semaphore;
     Fence render_fence;

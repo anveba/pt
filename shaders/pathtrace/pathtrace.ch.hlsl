@@ -70,7 +70,7 @@ float3 diffuse_fresnel(float3 fd90, float cos_theta) {
 }
 
 float get_diffuse_cdf(float metalness) {
-    return lerp(0.5, 0.0, metalness); // TODO
+    return lerp(0.5, 0.0, metalness);
 }
 
 float3 evaluate_brdf(in BrdfEvalInput input, float3 i, float3 o, float3 m, out float pdf) {
@@ -271,7 +271,7 @@ void main(inout RayPayload payload, in Attributes attributes)
     
     roughness = max(0.00001, roughness * roughness);
     float aspect = sqrt(1.0 - 0.9 * abs(anisotropy));
-    brdf_input.alpha = float2(roughness / aspect, roughness * aspect); // Clamp?
+    brdf_input.alpha = float2(roughness / aspect, roughness * aspect);
     if (anisotropy < 0.0)
         brdf_input.alpha = float2(brdf_input.alpha.y, brdf_input.alpha.x);
 

@@ -31,14 +31,16 @@ int main(int argc, char** argv)
             continue;
         }
 
-        double sse = 0;
+        double mean = 0, sse = 0;
 
-        for (size_t i = 0; i < width * height * comp; i++) {
+        for (size_t i = 0; i < width * height * 4; i++) {
+            if ((i % 4) == 3)
+                continue;
             double error = image[i] - reference[i];
             sse += error * error;
         }
 
-        double mse = sse / (width * height * comp);
+        double mse = sse / (width * height * 3 - 1);
 
         std::cout << argv[image_idx] << "\tMSE: " << mse << std::endl;
 

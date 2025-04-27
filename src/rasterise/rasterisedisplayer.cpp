@@ -9,8 +9,8 @@ RasteriseDisplayer::RasteriseDisplayer(
     VkFormat image_format,
     VkFormat depth_format)
     : depth_image(VK_NULL_HANDLE)
-    , image_semaphore(display.get_device(), false)
-    , render_semaphore(display.get_device(), false)
+    , image_semaphore(display.get_device())
+    , render_semaphore(display.get_device())
     , render_fence(display.get_device(), true)
     , display(display)
     , command_pool(command_pool)
@@ -18,14 +18,14 @@ RasteriseDisplayer::RasteriseDisplayer(
     , in_render(false)
 {
     set_extent(display.get_extent().width, display.get_extent().height);
-    command_buffer = command_pool.create_command_buffer();
+    command_pool.create_command_buffers(&command_buffer, 1);
 }
 
 RasteriseDisplayer::~RasteriseDisplayer()
 {
     destroy_framebuffers();
     destroy_depth_image();
-    command_pool.destroy_command_buffer(command_buffer);
+    command_pool.destroy_command_buffers(&command_buffer, 1);
 }
 
 void RasteriseDisplayer::set_extent(uint32_t width, uint32_t height)
@@ -119,7 +119,7 @@ void RasteriseDisplayer::end_render()
     display.present(render_semaphore);
 }
 
-void RasteriseDisplayer::get_debug_info(RenderDebugInfo& info)
+void RasteriseDisplayer::get_debug_info(RenderDebugInfo& info) const
 {
     info = {};
 }

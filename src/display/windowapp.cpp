@@ -1,8 +1,8 @@
 #include "windowapp.h"
 
+#include "compute/postprocess.h"
 #include "fps.h"
 #include "pathtrace/ptdisplayer.h"
-#include "postprocess/postprocess.h"
 #include "rasterise/rasterisedisplayer.h"
 
 static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
@@ -18,7 +18,7 @@ static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
     extra = PathTracer::get_descriptor_pool_sizes();
     pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
 
-    extra = PostProcessor::get_descriptor_pool_sizes();
+    extra = PostProcessor<PathTracer::IN_FLIGHT>::get_descriptor_pool_sizes();
     pool_sizes.insert(pool_sizes.end(), extra.begin(), extra.end());
 
     return pool_sizes;
@@ -26,7 +26,7 @@ static std::vector<VkDescriptorPoolSize> get_descriptor_pool_sizes()
 
 WindowedApplication::WindowedApplication(uint32_t width, uint32_t height, const std::vector<const char*>& validation_layers)
     : context(ContextUsage(CONTEXT_USAGE_WINDOW_BIT), validation_layers)
-    , window(context, width, height)
+    , window(context, "Vulkan Path Tracer", width, height)
     , device(context, DeviceUsage(DEVICE_USAGE_WINDOW_BIT | DEVICE_USAGE_RAY_TRACE_BIT), &window)
     , descriptor_pool(device, get_descriptor_pool_sizes())
     , command_pool(device)
@@ -72,6 +72,12 @@ static void render_loop(IDisplayable** displayers, Camera& camera, Display& disp
             break;
 
         bool update_camera = false;
+
+        if (window_event_info.resize) {
+            display.get_device().wait_idle();
+            display.recreate_swap_chain();
+            current_displayer->set_extent(display.get_extent().width, display.get_extent().height);
+        }
 
         if (control_panel.render_type != current_displayer->render_type()) {
             current_displayer->wait_idle();

@@ -8,7 +8,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include <imgui_impl_sdl3.h>
 
-Window::Window(VulkanContext& context, uint32_t width, uint32_t height)
+Window::Window(VulkanContext& context, const std::string& title, uint32_t width, uint32_t height)
     : context(context)
 {
     assert(width > 0 && width <= std::numeric_limits<int>::max());
@@ -20,7 +20,7 @@ Window::Window(VulkanContext& context, uint32_t width, uint32_t height)
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
     handle = SDL_CreateWindow(
-        "Vulkan Test",
+        title.c_str(),
         width,
         height,
         window_flags);

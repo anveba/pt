@@ -9,34 +9,37 @@ PathTraceDisplayer::PathTraceDisplayer(
     CommandPool& command_pool,
     const Scene& scene,
     VkExtent2D extent)
-    : image_semaphore(display.get_device(), false)
-    , render_semaphore(display.get_device(), false)
-    , render_fence(display.get_device(), true)
+    : current_frame(0)
+    , image_semaphores(display.get_device())
+    , render_semaphores(display.get_device())
+    , render_fences(display.get_device(), true)
+    , accumulation_image(display.get_device(), command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VkImageUsageFlagBits(VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT), VK_IMAGE_LAYOUT_GENERAL, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
     , intermediate_image(display.get_device(), command_pool, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VkImageUsageFlagBits(VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT), VK_IMAGE_LAYOUT_GENERAL, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
     , display(display)
     , command_pool(command_pool)
-    , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, extent)
-    , tone_mapper(display.get_device(), descriptor_pool, command_pool, extent, path_tracer.get_accumulation_image().get_view(), intermediate_image.get_view())
+    , path_tracer(display.get_device(), descriptor_pool, command_pool, scene, accumulation_image)
+    , tone_mapper(display.get_device(), descriptor_pool, command_pool, extent, accumulation_image.get_view(), intermediate_image.get_view())
     , in_render(false)
 {
     create_render_pass();
     create_framebuffers();
-    command_buffer = command_pool.create_command_buffer();
+    command_pool.create_command_buffers(command_buffers.data(), command_buffers.size());
 }
 
 PathTraceDisplayer::~PathTraceDisplayer()
 {
-    command_pool.destroy_command_buffer(command_buffer);
+    command_pool.destroy_command_buffers(command_buffers.data(), command_buffers.size());
     destroy_framebuffers();
     vkDestroyRenderPass(display.get_device().logical_handle(), render_pass, nullptr);
 }
 
 void PathTraceDisplayer::set_extent(uint32_t width, uint32_t height)
 {
-    path_tracer.set_extent(command_pool, width, height);
-    VkExtent2D image_extent = path_tracer.get_accumulation_image().get_extent();
+    accumulation_image.rebuild(command_pool, { width, height });
+    path_tracer.set_accumulation_image(command_pool, accumulation_image);
+    VkExtent2D image_extent = accumulation_image.get_extent();
     intermediate_image.rebuild(command_pool, image_extent);
-    tone_mapper.set_source_image(path_tracer.get_accumulation_image().get_view());
+    tone_mapper.set_source_image(accumulation_image.get_view());
     tone_mapper.set_result_image(intermediate_image.get_view());
     tone_mapper.set_parameters(image_extent.width, image_extent.height);
 
@@ -56,7 +59,8 @@ void PathTraceDisplayer::set_camera(const Camera& camera)
 
 void PathTraceDisplayer::wait_idle()
 {
-    render_fence.wait();
+    for (size_t i = 0; i < render_fences.size(); i++)
+        render_fences[i].wait();
 }
 
 void PathTraceDisplayer::begin_render()
@@ -64,31 +68,38 @@ void PathTraceDisplayer::begin_render()
     if (in_render)
         throw std::runtime_error("Ray tracer is already rendering.");
 
-    render_fence.wait();
+    current_frame = (current_frame + 1) % PathTracer::IN_FLIGHT;
 
-    path_tracer.update_uniforms();
+    render_fences[current_frame].wait();
+    render_fences[current_frame].reset();
+
+    path_tracer.update_uniforms(current_frame);
+    tone_mapper.update_uniforms(current_frame);
 
     bool swap_chain_recreated;
-    uint32_t index = display.acquire_next_index(image_semaphore, swap_chain_recreated);
+    uint32_t index = display.acquire_next_index(image_semaphores[current_frame], swap_chain_recreated);
     if (swap_chain_recreated)
         set_extent(display.get_extent().width, display.get_extent().height);
 
-    vkResetCommandBuffer(command_buffer, 0);
+    vkResetCommandBuffer(command_buffers[current_frame], 0);
 
     VkCommandBufferBeginInfo cmd_buffer_begin_info{};
     cmd_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cmd_buffer_begin_info.flags = 0;
     cmd_buffer_begin_info.pInheritanceInfo = nullptr;
 
-    if (vkBeginCommandBuffer(command_buffer, &cmd_buffer_begin_info) != VK_SUCCESS)
+    if (vkBeginCommandBuffer(command_buffers[current_frame], &cmd_buffer_begin_info) != VK_SUCCESS)
         throw std::runtime_error("Failed to begin command buffer.");
 
-    // TODO avoid writing each frame (implement together with frames in flight)
-    path_tracer.write_command_buffer(command_buffer);
+    // TODO avoid writing each frame
+    path_tracer.write_command_buffer(command_buffers[current_frame], current_frame);
 
-    tone_mapper.write_command_buffer(command_buffer);
+    tone_mapper.write_command_buffer(command_buffers[current_frame], current_frame);
 
-    blit_result(display.get_swap_chain().images[index], display.get_swap_chain().extent.width, display.get_swap_chain().extent.height);
+    blit_result(command_buffers[current_frame],
+                display.get_swap_chain().images[index],
+                display.get_swap_chain().extent.width,
+                display.get_swap_chain().extent.height);
 
     VkRenderPassBeginInfo render_pass_begin_info{};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -97,46 +108,44 @@ void PathTraceDisplayer::begin_render()
     render_pass_begin_info.renderArea.offset = { 0, 0 };
     render_pass_begin_info.renderArea.extent = intermediate_image.get_extent();
 
-    vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(command_buffers[current_frame], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
     in_render = true;
 }
 
 void PathTraceDisplayer::end_render()
 {
-    vkCmdEndRenderPass(command_buffer);
+    vkCmdEndRenderPass(command_buffers[current_frame]);
 
     if (!in_render)
         throw std::runtime_error("Render ended before having begun.");
 
-    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS)
+    if (vkEndCommandBuffer(command_buffers[current_frame]) != VK_SUCCESS)
         throw std::runtime_error("Failed to write command buffer.");
 
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR };
     submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &image_semaphore.handle();
+    submit_info.pWaitSemaphores = &image_semaphores[current_frame].handle();
     submit_info.pWaitDstStageMask = wait_stages;
     submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
+    submit_info.pCommandBuffers = &command_buffers[current_frame];
 
-    VkSemaphore signal_semaphores[] = { render_semaphore.handle() };
+    VkSemaphore signal_semaphores[] = { render_semaphores[current_frame].handle() };
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-    render_fence.reset();
-
-    if (vkQueueSubmit(display.get_device().get_graphics_queue(), 1, &submit_info, render_fence.handle()) != VK_SUCCESS)
+    if (vkQueueSubmit(display.get_device().get_graphics_queue(), 1, &submit_info, render_fences[current_frame].handle()) != VK_SUCCESS)
         throw std::runtime_error("Failed to submit to queue.");
 
     in_render = false;
 
-    display.present(render_semaphore);
+    display.present(render_semaphores[current_frame]);
 }
 
-void PathTraceDisplayer::get_debug_info(RenderDebugInfo& info)
+void PathTraceDisplayer::get_debug_info(RenderDebugInfo& info) const
 {
     info = {};
     info.samples = path_tracer.get_sample_index();
@@ -157,7 +166,7 @@ VkRenderPass PathTraceDisplayer::get_render_pass()
 
 VkCommandBuffer PathTraceDisplayer::get_command_buffer()
 {
-    return command_buffer;
+    return command_buffers[current_frame];
 }
 
 void PathTraceDisplayer::create_render_pass()
@@ -242,7 +251,7 @@ void PathTraceDisplayer::destroy_framebuffers()
         vkDestroyFramebuffer(display.get_device().logical_handle(), framebuffer, nullptr);
 }
 
-void PathTraceDisplayer::blit_result(VkImage image, uint32_t width, uint32_t height)
+void PathTraceDisplayer::blit_result(VkCommandBuffer command_buffer, VkImage image, uint32_t width, uint32_t height)
 {
     VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 

@@ -239,12 +239,4 @@ float3 sample_micronormal(float2 alpha, float2 u) {
     return normalize(float3(x, y, 1.0));
 }
 
-float power_heuristic(float p_i, float p_j) {
-    return sq(p_i) / (sq(p_i) + sq(p_j));
-}
-
-float balance_heuristic(float p_i, float p_j) {
-    return p_i / (p_i + p_j);
-}
-
 #endif

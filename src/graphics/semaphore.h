@@ -8,7 +8,7 @@ class Device;
 class Semaphore
 {
   public:
-    Semaphore(Device& device, bool signaled);
+    Semaphore(Device& device);
     ~Semaphore();
     inline const VkSemaphore& handle() const { return semaphore; }
 

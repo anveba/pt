@@ -25,9 +25,10 @@ class IDisplayable
     virtual void begin_render() = 0;
     virtual void end_render() = 0;
 
-    virtual void get_debug_info(RenderDebugInfo& info) = 0;
+    virtual void get_debug_info(RenderDebugInfo& info) const = 0;
     virtual void set_settings(const UiControlPanel& control_panel) = 0;
-    virtual RenderType render_type() = 0;
+    virtual RenderType render_type() const = 0;
+    virtual size_t max_in_flight() const = 0;
 
   private:
     virtual VkRenderPass get_render_pass() = 0;
