@@ -103,3 +103,18 @@ void copy_image(
                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                             subresource_range);
 }
+
+void memory_barrier(
+    VkCommandBuffer command_buffer,
+    VkAccessFlags src_access,
+    VkAccessFlags dst_access,
+    VkPipelineStageFlags src_stage,
+    VkPipelineStageFlags dst_stage)
+{
+    VkMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = src_access;
+    barrier.dstAccessMask = dst_access;
+
+    vkCmdPipelineBarrier(command_buffer, src_stage, dst_stage, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+}

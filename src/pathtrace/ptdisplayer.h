@@ -8,7 +8,7 @@
 #include "graphics/descpool.h"
 #include "graphics/fence.h"
 #include "graphics/storageimage.h"
-#include "pathtrace/pathtrace.h"
+#include "pathtrace.h"
 
 class PathTraceDisplayer : public IDisplayable
 {

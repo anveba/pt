@@ -16,13 +16,14 @@ class Compute
             DescriptorPool& descriptor_pool,
             CommandPool& command_pool,
             const Shader& shader,
-            const DescriptorSetLayout& layout,
+            const DescriptorSetLayout& descriptor_set_layout,
+            const InitableArray<DescriptorSet, InFlight>& descriptor_sets,
             Uint3 group_counts)
         : device(device)
         , shader(shader)
         , group_counts(group_counts)
-        , descriptor_set_layout(layout)
-        , descriptor_sets(descriptor_pool, descriptor_set_layout)
+        , descriptor_set_layout(descriptor_set_layout)
+        , descriptor_sets(descriptor_sets)
     {
         create_pipeline();
     }
@@ -44,7 +45,13 @@ class Compute
     void set_group_counts(Uint3 group_counts) { this->group_counts = group_counts; };
 
     inline Device& get_device() { return device; }
-    inline InitableArray<DescriptorSet, InFlight>& get_desc_sets() { return descriptor_sets; }
+
+    static Uint3 compute_group_counts_2d(uint32_t width, uint32_t height, uint32_t group_size)
+    {
+        uint32_t group_width = width / group_size + ((width % group_size) > 0 ? 1 : 0);
+        uint32_t group_height = height / group_size + ((height % group_size) > 0 ? 1 : 0);
+        return Uint3(group_width, group_height, 1);
+    }
 
   private:
     Device& device;
@@ -53,7 +60,7 @@ class Compute
     Uint3 group_counts;
 
     const DescriptorSetLayout& descriptor_set_layout;
-    InitableArray<DescriptorSet, InFlight> descriptor_sets;
+    const InitableArray<DescriptorSet, InFlight>& descriptor_sets;
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;

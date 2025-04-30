@@ -2,6 +2,7 @@
 #define PATHTRACE_PATHTRACE_H_INCLUDED
 
 #include "accstruct.h"
+#include "compute/compute.h"
 #include "graphics/cmdpool.h"
 #include "graphics/descset.h"
 #include "graphics/sampler.h"
@@ -13,6 +14,7 @@
 #include "scene/scene.h"
 #include "scene/scenebuffer.h"
 #include "scene/scenetex.h"
+#include "wavequeue.h"
 
 struct PathTraceUniformData
 {
@@ -26,6 +28,10 @@ struct PathTraceUniformData
     alignas(4) uint32_t sample_index;
     alignas(4) uint32_t samples;
     alignas(4) uint32_t max_bounces;
+
+    alignas(4) uint32_t width;
+    alignas(4) uint32_t height;
+    alignas(4) uint32_t queue_capacity;
 
     alignas(4) uint32_t light_count;
     alignas(16) Vec3 environment_colour;
@@ -59,15 +65,17 @@ class PathTracer
     static constexpr size_t IN_FLIGHT = 4;
 
   private:
+    static constexpr bool USE_WAVEFRONT = true;
+
     Device& device;
 
     SceneBuffer scene_buffer;
     SceneTextures scene_textures;
     AccelerationStructure acceleration_structure;
+    WavefrontQueue wavefront_queue;
 
     PathTraceUniformData uniform_data;
     SharedMemory uniform_buffers;
-    VkExtent2D extent;
     Sampler texture_sampler;
 
     VkPipelineLayout pipeline_layout;
@@ -75,6 +83,9 @@ class PathTracer
 
     DescriptorSetLayout descriptor_set_layout;
     InitableArray<DescriptorSet, IN_FLIGHT> descriptor_sets;
+
+    Compute<IN_FLIGHT> resetter;
+    Compute<IN_FLIGHT> queue_swapper;
 
     VkBuffer shader_group_buffer;
     VkDeviceMemory shader_group_buffer_memory;

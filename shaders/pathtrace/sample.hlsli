@@ -239,4 +239,29 @@ float3 sample_micronormal(float2 alpha, float2 u) {
     return normalize(float3(x, y, 1.0));
 }
 
+inline void sample_camera_ray(float4 u, 
+    uint2 pixel, uint2 film_size, 
+    in float4x4 inv_view, in float4x4 inv_proj,
+    float lens_radius, float focus_dist,
+    out float3 origin, out float3 direction) 
+{
+    float2 pixel_offset = u.xy;
+
+    const float2 film_position = pixel + pixel_offset;
+    const float2 norm_coords = (film_position / film_size) * 2.0 - 1.0;
+    const float4 target = mul(inv_proj, float4(norm_coords, 1.0, 1.0));
+
+    float3 ray_origin = 0.0, ray_dir = target.xyz;
+    if (lens_radius > 0.0) {
+        float2 lens_point = lens_radius * sample_concentric_disk(u.zw);
+        float t_to_focus = focus_dist / -ray_dir.z;
+        float3 focus_point = ray_origin + t_to_focus * ray_dir;
+        ray_origin = float3(lens_point, 0.0);
+        ray_dir = focus_point - ray_origin;
+    }
+
+    origin = mul(inv_view, float4(ray_origin, 1.0)).xyz;
+    direction = normalize(mul(inv_view, float4(ray_dir, 0.0)).xyz);
+}
+
 #endif

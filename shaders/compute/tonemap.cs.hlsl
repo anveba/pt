@@ -1,3 +1,4 @@
+#include "constants.h"
 
 RWTexture2D<float4> source_image : register(u0);
 RWTexture2D<float4> result_image : register(u1);
@@ -64,7 +65,7 @@ float3 aces(float3 col)
     return saturate(col);
 }
 
-[numthreads(16, 16, 1)] 
+[numthreads(TONE_MAP_GROUP_SIZE, TONE_MAP_GROUP_SIZE, 1)] 
 void main(uint3 dispatch_id : SV_DispatchThreadID)
 {
     int2 coord = dispatch_id.xy;

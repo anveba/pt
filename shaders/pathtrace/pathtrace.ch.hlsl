@@ -5,7 +5,7 @@
 #include "geometry.hlsli"
 #include "lightsample.hlsli"
 
-RaytracingAccelerationStructure bvh : register(t0);
+RaytracingAccelerationStructure bvh : register(b0);
 RWTexture2D<float4> dest_image : register(u1);
 cbuffer ubo : register(b2) { UniformBufferObject ubo; };
 StructuredBuffer<float4> vertex_buffer : register(t3);

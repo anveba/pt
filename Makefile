@@ -43,10 +43,10 @@ $(OUT_DIR)/%.spv: %.hlsl
 	$(DXC) $(DXC_FLAGS) -T $(call get_shader_model,$(notdir $<)) -Fo $@ $<
 
 get_shader_model = \
-	$(if $(findstring .vs,$1),vs_6_0, \
-	$(if $(findstring .ps,$1),ps_6_0, \
-	$(if $(findstring .cs,$1),cs_6_0, \
-	lib_6_3)))
+	$(if $(findstring .vs,$1),vs_6_6, \
+	$(if $(findstring .ps,$1),ps_6_6, \
+	$(if $(findstring .cs,$1),cs_6_6, \
+	lib_6_6)))
 
 clean:
 	rm -rf $(OBJ_DIR) $(OUT_DIR)

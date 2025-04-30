@@ -43,4 +43,10 @@ void copy_image(VkCommandBuffer command_buffer,
                 uint32_t width,
                 uint32_t height);
 
+void memory_barrier(VkCommandBuffer command_buffer,
+                    VkAccessFlags src_access,
+                    VkAccessFlags dst_access,
+                    VkPipelineStageFlags src_stage,
+                    VkPipelineStageFlags dst_stage);
+
 #endif

@@ -18,6 +18,10 @@ struct UniformBufferObject
     uint samples;
     uint max_bounces;
 
+    uint width;
+    uint height;
+    uint queue_capacity;
+
     uint light_count;
     float4 environment_colour;
 
@@ -103,6 +107,10 @@ void set_brdf_pdf(inout RayPayload payload, float pdf) {
 
 float3 get_throughput(in RayPayload payload) {
     return payload.throughput.rgb;
+}
+
+void set_throughput(inout RayPayload payload, float3 throughput) {
+    payload.throughput.rgb = throughput;
 }
 
 #endif

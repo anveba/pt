@@ -8,19 +8,6 @@
 #include "graphics/sharedmem.h"
 #include "lalgebra.h"
 
-static std::vector<VkDescriptorSetLayoutBinding> post_process_descriptor_set_layout_bindings()
-{
-    VkDescriptorSetLayoutBinding source_image_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
-    VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
-    VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT);
-
-    return {
-        source_image_layout_binding,
-        result_image_layout_binding,
-        uniform_buffer_binding,
-    };
-}
-
 template<size_t InFlight>
 class PostProcessor
 {
@@ -34,12 +21,13 @@ class PostProcessor
                   Uint3 group_counts,
                   VkImageView source_image_view,
                   VkImageView result_image_view)
-        : desc_set_layout(device, post_process_descriptor_set_layout_bindings())
-        , compute(device, descriptor_pool, command_pool, shader, desc_set_layout, group_counts)
+        : desc_set_layout(device, descriptor_set_layout_bindings())
+        , descriptor_sets(descriptor_pool, desc_set_layout)
+        , compute(device, descriptor_pool, command_pool, shader, desc_set_layout, descriptor_sets, group_counts)
     {
         set_source_image(source_image_view);
         set_result_image(result_image_view);
-        set_uniform_descriptor(ubo, uniform_data_size);
+        set_uniform_descriptors(ubo, uniform_data_size);
     }
 
     ~PostProcessor()
@@ -62,7 +50,7 @@ class PostProcessor
         VkDescriptorImageInfo source_image_descriptor = DescriptorSet::create_descriptor(source_image_view, VK_IMAGE_LAYOUT_GENERAL);
         VkWriteDescriptorSet source_image_writes[InFlight];
         for (size_t i = 0; i < InFlight; i++)
-            source_image_writes[i] = compute.get_desc_sets()[i].write_descriptor_set(&source_image_descriptor, 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+            source_image_writes[i] = descriptor_sets[i].write_descriptor_set(&source_image_descriptor, 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
         DescriptorSet::update_write_descriptors(compute.get_device(), source_image_writes, InFlight);
     }
@@ -72,7 +60,7 @@ class PostProcessor
         VkDescriptorImageInfo result_image_descriptor = DescriptorSet::create_descriptor(result_image_view, VK_IMAGE_LAYOUT_GENERAL);
         VkWriteDescriptorSet result_image_writes[InFlight];
         for (size_t i = 0; i < InFlight; i++)
-            result_image_writes[i] = compute.get_desc_sets()[i].write_descriptor_set(&result_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+            result_image_writes[i] = descriptor_sets[i].write_descriptor_set(&result_image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
         DescriptorSet::update_write_descriptors(compute.get_device(), result_image_writes, InFlight);
     }
@@ -82,20 +70,32 @@ class PostProcessor
 
   private:
     DescriptorSetLayout desc_set_layout;
+    InitableArray<DescriptorSet, InFlight> descriptor_sets;
     Compute<InFlight> compute;
 
-    void set_uniform_descriptor(const SharedMemory& ubo, uint32_t uniform_data_size)
+    void set_uniform_descriptors(const SharedMemory& ubo, uint32_t uniform_data_size)
     {
         VkWriteDescriptorSet uniform_descriptor_writes[InFlight];
         VkDescriptorBufferInfo uniform_descriptors[InFlight];
         for (size_t i = 0; i < InFlight; i++) {
             uniform_descriptors[i] = DescriptorSet::create_descriptor(ubo.handle(), uniform_data_size, i * uniform_data_size);
-            uniform_descriptor_writes[i] = compute.get_desc_sets()[i].write_descriptor_set(&uniform_descriptors[i], 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+            uniform_descriptor_writes[i] = descriptor_sets[i].write_descriptor_set(&uniform_descriptors[i], 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         }
         DescriptorSet::update_write_descriptors(compute.get_device(), uniform_descriptor_writes, InFlight);
     }
 
-    void create_pipeline();
+    static std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings()
+    {
+        VkDescriptorSetLayoutBinding source_image_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
+        VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
+        VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT);
+
+        return {
+            source_image_layout_binding,
+            result_image_layout_binding,
+            uniform_buffer_binding,
+        };
+    }
 
     NO_COPY(PostProcessor);
 };

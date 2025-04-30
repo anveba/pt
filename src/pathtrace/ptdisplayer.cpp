@@ -88,10 +88,10 @@ void PathTraceDisplayer::begin_render()
     cmd_buffer_begin_info.flags = 0;
     cmd_buffer_begin_info.pInheritanceInfo = nullptr;
 
+    // TODO avoid writing each frame
     if (vkBeginCommandBuffer(command_buffers[current_frame], &cmd_buffer_begin_info) != VK_SUCCESS)
         throw std::runtime_error("Failed to begin command buffer.");
 
-    // TODO avoid writing each frame
     path_tracer.write_command_buffer(command_buffers[current_frame], current_frame);
 
     tone_mapper.write_command_buffer(command_buffers[current_frame], current_frame);

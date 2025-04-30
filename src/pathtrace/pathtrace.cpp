@@ -4,15 +4,17 @@
 
 std::vector<VkDescriptorPoolSize> PathTracer::get_descriptor_pool_sizes()
 {
-    return { { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 * IN_FLIGHT },
-             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 * IN_FLIGHT },
-             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 * IN_FLIGHT },
-             { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5 * IN_FLIGHT },
-             { VK_DESCRIPTOR_TYPE_SAMPLER, 1 * IN_FLIGHT },
-             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, MAX_TEXTURE_COUNT * IN_FLIGHT } };
+    return {
+        { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 * IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 * IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 * IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5 * IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_SAMPLER, 1 * IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, MAX_TEXTURE_COUNT * IN_FLIGHT }
+    };
 }
 
-constexpr size_t DESCRIPTOR_BINDING_COUNT = 10;
+constexpr size_t DESCRIPTOR_BINDING_COUNT = 11;
 
 static inline void get_shader_group_alignments(
     const Device& device,
@@ -30,8 +32,8 @@ constexpr size_t SHADER_BINDING_TABLE_ENTRY_COUNTS[4] = { 1, 2, 1, 0 }; // Ray g
 static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings(const VkSampler& sampler)
 {
     VkDescriptorSetLayoutBinding acceleration_structure_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-    VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-    VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+    VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding vertex_binding = DescriptorSetLayout::create_layout_binding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding index_binding = DescriptorSetLayout::create_layout_binding(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
@@ -39,6 +41,7 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
     VkDescriptorSetLayoutBinding texture_sampler_binding = DescriptorSetLayout::create_layout_binding(7, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 1, &sampler);
     VkDescriptorSetLayoutBinding texture_binding = DescriptorSetLayout::create_layout_binding(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, MAX_TEXTURE_COUNT);
     VkDescriptorSetLayoutBinding light_sampler_binding = DescriptorSetLayout::create_layout_binding(9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding queue_binding = DescriptorSetLayout::create_layout_binding(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_COMPUTE_BIT);
 
     std::vector<VkDescriptorSetLayoutBinding> bindings = {
         acceleration_structure_layout_binding,
@@ -50,7 +53,8 @@ static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindi
         material_binding,
         texture_sampler_binding,
         texture_binding,
-        light_sampler_binding
+        light_sampler_binding,
+        queue_binding
     };
     assert(bindings.size() == DESCRIPTOR_BINDING_COUNT);
     return bindings;
@@ -76,10 +80,13 @@ PathTracer::PathTracer(
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR), VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
     , scene_textures(device, command_pool, scene, 0)
     , acceleration_structure(device, command_pool, scene, scene_buffer)
+    , wavefront_queue(device, 512 * 512)
     , uniform_buffers(device, sizeof(PathTraceUniformData) * IN_FLIGHT, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
     , texture_sampler(device)
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()), get_descriptor_binding_flags().data())
     , descriptor_sets(descriptor_pool, descriptor_set_layout)
+    , resetter(device, descriptor_pool, command_pool, Shader(device, "bin/shaders/pathtrace/ptreset.cs.spv"), descriptor_set_layout, descriptor_sets, Uint3(1))
+    , queue_swapper(device, descriptor_pool, command_pool, Shader(device, "bin/shaders/pathtrace/swapqueue.cs.spv"), descriptor_set_layout, descriptor_sets, Uint3(1))
 {
     create_pipeline();
     create_shader_binding_tables();
@@ -89,6 +96,8 @@ PathTracer::PathTracer(
     set_accumulation_image(command_pool, accumulation_image);
 
     uniform_data.sample_index = 0;
+    uniform_data.queue_capacity = wavefront_queue.get_queue_max_count();
+
     set_samples(1);
     set_max_bounces(1);
 }
@@ -162,7 +171,7 @@ void PathTracer::create_pipeline()
     if (vkCreatePipelineLayout(device.logical_handle(), &pipeline_layout_create_info, nullptr, &pipeline_layout) != VK_SUCCESS)
         throw std::runtime_error("Failed to create pipeline layout.");
 
-    Shader ray_gen(device, "bin/shaders/pathtrace/pathtrace.rg.spv");
+    Shader ray_gen(device, USE_WAVEFRONT ? "bin/shaders/pathtrace/pathtrace_wf.rg.spv" : "bin/shaders/pathtrace/pathtrace.rg.spv");
     Shader ray_miss(device, "bin/shaders/pathtrace/pathtrace.ms.spv");
     Shader shadow_ray_miss(device, "bin/shaders/pathtrace/shadowray.ms.spv");
     Shader ray_closest_hit(device, "bin/shaders/pathtrace/pathtrace.ch.spv");
@@ -255,6 +264,8 @@ void PathTracer::update_descriptor_sets()
     VkDescriptorBufferInfo object_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.instance_region_size(), scene_buffer.get_instance_offset());
     VkDescriptorBufferInfo material_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.material_region_size(), scene_buffer.get_material_offset());
     VkDescriptorBufferInfo light_sampler_descriptor = DescriptorSet::create_descriptor(scene_buffer.handle(), scene_buffer.light_sampler_size(), scene_buffer.get_light_sampler_offset());
+    VkDescriptorBufferInfo queue_descriptor = DescriptorSet::create_descriptor(wavefront_queue.handle(), wavefront_queue.get_total_size());
+
     std::vector<VkDescriptorImageInfo> texture_descriptors;
     if (!scene_textures.get_textures().empty()) {
 
@@ -279,6 +290,7 @@ void PathTracer::update_descriptor_sets()
         VkWriteDescriptorSet object_buffer_write = descriptor_sets[i].write_descriptor_set(&object_descriptor, 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         VkWriteDescriptorSet material_buffer_write = descriptor_sets[i].write_descriptor_set(&material_descriptor, 6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         VkWriteDescriptorSet light_sampler_write = descriptor_sets[i].write_descriptor_set(&light_sampler_descriptor, 9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        VkWriteDescriptorSet queue_descriptor_write = descriptor_sets[i].write_descriptor_set(&queue_descriptor, 10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
         std::vector<VkWriteDescriptorSet> write_descriptor_sets = {
             acceleration_structure_write,
@@ -287,7 +299,8 @@ void PathTracer::update_descriptor_sets()
             index_buffer_write,
             object_buffer_write,
             material_buffer_write,
-            light_sampler_write
+            light_sampler_write,
+            queue_descriptor_write
         };
 
         if (!scene_textures.get_textures().empty()) {
@@ -377,24 +390,48 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer, size_t fli
     callable_sbt.stride = aligned_handle_size;
     callable_sbt.size = aligned_handle_size * SHADER_BINDING_TABLE_ENTRY_COUNTS[3];
 
+    resetter.write_command_buffer(command_buffer, flight_index);
+
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_layout, 0, 1, &descriptor_sets[flight_index].handle(), 0, nullptr);
 
-    vkCmdTraceRaysKHR(
-        command_buffer,
-        &ray_gen_sbt,
-        &miss_sbt,
-        &hit_sbt,
-        &callable_sbt,
-        extent.width,
-        extent.height,
-        1);
+    if (USE_WAVEFRONT) {
+        size_t max_passes = (size_t)std::ceil((float)(uniform_data.width * uniform_data.height) / wavefront_queue.get_queue_max_count());
+        size_t dispatches = (uniform_data.max_bounces + 1) * max_passes;
+        std::cout << "dispatches: " << dispatches << ", qsize: " << wavefront_queue.get_total_size() << std::endl;
+        for (size_t i = 0; i < dispatches; i++) {
+            memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            queue_swapper.write_command_buffer(command_buffer, flight_index);
+            memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);
+            vkCmdTraceRaysKHR(
+                command_buffer,
+                &ray_gen_sbt,
+                &miss_sbt,
+                &hit_sbt,
+                &callable_sbt,
+                wavefront_queue.get_queue_max_count(),
+                1,
+                1);
+        }
+    } else {
+        vkCmdTraceRaysKHR(
+            command_buffer,
+            &ray_gen_sbt,
+            &miss_sbt,
+            &hit_sbt,
+            &callable_sbt,
+            uniform_data.width,
+            uniform_data.height,
+            1);
+    }
 }
 
 void PathTracer::set_accumulation_image(CommandPool& command_pool, StorageImage& image)
 {
-    extent = image.get_extent();
+    uniform_data.width = image.get_extent().width;
+    uniform_data.height = image.get_extent().height;
     uniform_data.sample_index = 0;
+    resetter.set_group_counts(resetter.compute_group_counts_2d(image.get_extent().width, image.get_extent().height, PTRESET_GROUP_SIZE));
 
     VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
     VkWriteDescriptorSet write_descriptor_sets[IN_FLIGHT];
