@@ -398,8 +398,7 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer, size_t fli
     if (USE_WAVEFRONT) {
         size_t max_passes = (size_t)std::ceil((float)(uniform_data.width * uniform_data.height) / wavefront_queue.get_queue_max_count());
         size_t dispatches = (uniform_data.max_bounces + 1) * max_passes;
-        std::cout << "dispatches: " << dispatches << ", qsize: " << wavefront_queue.get_total_size() << std::endl;
-        for (size_t i = 0; i < dispatches; i++) {
+        for (size_t d = 0; d < dispatches; d++) {
             memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             queue_swapper.write_command_buffer(command_buffer, flight_index);
             memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);

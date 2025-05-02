@@ -5,9 +5,11 @@
 #include "util.hlsli"
 
 #define USE_SOBOL
+// #define USE_FAST_OWEN_SCRAMBLING
+#define USE_SLOW_OWEN_SCRAMBLING
 #define SOBOL_MAX_DIMENSION (4)
 
-// Implementation based on Practical Hash-based Owen Scrambling (Burley 2020).
+// Sobol' sampler implementation is based on Practical Hash-based Owen Scrambling (Burley 2020).
 
 #ifdef USE_SOBOL
 #define SAMPLER SobolSampler
@@ -21,8 +23,6 @@ struct SimpleSampler {
 
 struct SobolSampler {
     uint index;
-    uint dimension;
-    uint shuffled_index;
     uint seed;
 };
 
@@ -72,17 +72,19 @@ float2 simple_sample_2d(inout SimpleSampler s) {
     return float2(next_float(s.rng), next_float(s.rng));
 }
 
-void simple_sampler_start_new(inout SimpleSampler s, uint2 pixel, uint sample_index) {
+void simple_sampler_start_new(inout SimpleSampler s, uint2 pixel, uint sample_index, uint seed) {
     uint4 s0 = uint4(0x2ce9f109, 0x14757dc9, 0x40b8b0ab, 0x422c5873);
     uint4 s1 = uint4(0xd8a0e72c, 0xb1de11fd, 0x9f8df97f, 0x7dd7456e);
 
     s0 = hash_combine(s0, pixel.x);
     s0 = hash_combine(s0, pixel.y);
     s0 = hash_combine(s0, sample_index);
+    s0 = hash_combine(s0, seed);
 
     s1 = hash_combine(s1, pixel.x);
     s1 = hash_combine(s1, pixel.y);
     s1 = hash_combine(s1, sample_index);
+    s1 = hash_combine(s1, seed);
 
     s.rng = create_rng(s0, s1);
 }
@@ -97,9 +99,25 @@ uint laine_karras_permutation(uint x, uint seed) {
 }
 
 uint scramble(uint x, uint seed) {
+    #ifdef USE_FAST_OWEN_SCRAMBLING
     x = reversebits(x);
     x = laine_karras_permutation(x, seed);
     x = reversebits(x);
+
+    #elifdef USE_SLOW_OWEN_SCRAMBLING
+    if (seed & 1)
+        x ^= 1u << 31u;
+    for (uint i = 1; i < 32; i++) {
+        uint mask = (~0u) << (32u - i);
+        uint hash = hash_combine(seed, x & mask);
+        if (hash & (1u << i)) // (hash & 1) should do the trick here, but the hash might not be good for the first bit due to the mask.
+            x ^= 1u << (31u - i);
+    }
+
+    #else
+    x = x ^ seed;
+
+    #endif
     return x;
 }
 
@@ -119,33 +137,24 @@ uint scrambled_sobol(uint shuffled, uint dimension, uint seed) {
     return scramble(x, hash_combine(seed, dimension));
 }
 
-void pad(inout SobolSampler s) {
-    s.dimension = 0;
-    s.seed = hash(s.seed);
-    s.shuffled_index = scramble(s.index, s.seed);
-}
-
 float sobol_sample_1d(inout SobolSampler s) {
-    if (s.dimension >= SOBOL_MAX_DIMENSION) 
-        pad(s);
-    float result = 0x1p-32 * scrambled_sobol(s.shuffled_index, s.dimension, s.seed);
-    s.dimension += 1;
+    s.seed = hash(s.seed);
+    uint shuffled_index = scramble(s.index, s.seed);
+    float result = 0x1p-32 * scrambled_sobol(shuffled_index, 0, s.seed);
     return min(result, JUST_BELOW_ONE);
 }
 
 float2 sobol_sample_2d(inout SobolSampler s) {
-    if (s.dimension + 1 >= SOBOL_MAX_DIMENSION) 
-        pad(s);
+    s.seed = hash(s.seed);
+    uint shuffled_index = scramble(s.index, s.seed);
     float2 result = 0x1p-32 * float2(
-        scrambled_sobol(s.shuffled_index, s.dimension + 0, s.seed), 
-        scrambled_sobol(s.shuffled_index, s.dimension + 1, s.seed));
-    s.dimension += 2;
+        scrambled_sobol(shuffled_index, 0, s.seed), 
+        scrambled_sobol(shuffled_index, 1, s.seed));
     return min(result, JUST_BELOW_ONE);
 }
 
-void sobol_sampler_start_new(inout SobolSampler s, uint2 pixel, uint sample_index) {
-    s.seed = hash_combine(pixel.x, pixel.y);
-    s.dimension = 0x00FFFFFF;
+void sobol_sampler_start_new(inout SobolSampler s, uint2 pixel, uint sample_index, uint seed) {
+    s.seed = hash_combine(seed, hash_combine(pixel.x, pixel.y));
     s.index = sample_index;
 }
 
@@ -165,11 +174,11 @@ float2 sample_2d(inout SAMPLER s) {
     #endif
 }
 
-void sampler_start_new(inout SAMPLER s, uint2 pixel, uint sample_index) {
+void sampler_start_new(inout SAMPLER s, uint2 pixel, uint sample_index, uint seed) {
     #ifdef USE_SOBOL
-    sobol_sampler_start_new(s, pixel, sample_index);
+    sobol_sampler_start_new(s, pixel, sample_index, seed);
     #else
-    simple_sampler_start_new(s, pixel, sample_index);
+    simple_sampler_start_new(s, pixel, sample_index, seed);
     #endif
 }
 
@@ -239,21 +248,20 @@ float3 sample_micronormal(float2 alpha, float2 u) {
     return normalize(float3(x, y, 1.0));
 }
 
-inline void sample_camera_ray(float4 u, 
+inline void sample_camera_ray(
+    float2 u_pixel, float2 u_lens, 
     uint2 pixel, uint2 film_size, 
     in float4x4 inv_view, in float4x4 inv_proj,
     float lens_radius, float focus_dist,
     out float3 origin, out float3 direction) 
 {
-    float2 pixel_offset = u.xy;
-
-    const float2 film_position = pixel + pixel_offset;
+    const float2 film_position = pixel + u_pixel;
     const float2 norm_coords = (film_position / film_size) * 2.0 - 1.0;
     const float4 target = mul(inv_proj, float4(norm_coords, 1.0, 1.0));
 
     float3 ray_origin = 0.0, ray_dir = target.xyz;
     if (lens_radius > 0.0) {
-        float2 lens_point = lens_radius * sample_concentric_disk(u.zw);
+        float2 lens_point = lens_radius * sample_concentric_disk(u_lens);
         float t_to_focus = focus_dist / -ray_dir.z;
         float3 focus_point = ray_origin + t_to_focus * ray_dir;
         ray_origin = float3(lens_point, 0.0);

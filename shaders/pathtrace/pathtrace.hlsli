@@ -113,4 +113,17 @@ void set_throughput(inout RayPayload payload, float3 throughput) {
     payload.throughput.rgb = throughput;
 }
 
+bool russian_roulette(inout RayPayload payload) {
+    const float3 throughput = get_throughput(payload);
+    const float max_throughput = max(max(throughput.r, throughput.g), throughput.b);
+    float u = sample_1d(payload.sampler);
+    if (max_throughput < 1.0) {
+        float q = max(0.0, 1.0 - max_throughput);
+        if (u < q)
+            return true;
+        accumulate_throughput(payload, 1.0 / (1.0 - q));
+    }
+    return false;
+}
+
 #endif

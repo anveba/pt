@@ -169,5 +169,6 @@ void Display::present(Semaphore& wait_for)
 
     present_info.pResults = nullptr;
 
+    // Note: this call may block according to the spec
     vkQueuePresentKHR(device.get_present_queue(), &present_info);
 }

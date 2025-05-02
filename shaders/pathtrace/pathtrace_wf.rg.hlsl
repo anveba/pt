@@ -52,9 +52,9 @@ void main()
             segment = 0;
             radiance = 0.0;
 
-            sampler_start_new(payload.sampler, pixel, ubo.sample_index * ubo.max_bounces + segment); //TODO
+            sampler_start_new(payload.sampler, pixel, ubo.sample_index, segment);
 
-            sample_camera_ray(float4(sample_2d(payload.sampler), sample_2d(payload.sampler)), 
+            sample_camera_ray(sample_2d(payload.sampler), sample_2d(payload.sampler), 
                 pixel, uint2(ubo.width, ubo.height), 
                 ubo.inv_view, ubo.inv_proj,
                 ubo.lens_radius, ubo.focus_dist,
@@ -71,7 +71,7 @@ void main()
             segment = queues[QUEUE_FIELD(ubo.queue_capacity, src_queue, id, QUEUE_ITEM_PATH_SEGMENT_OFFSET)];
             radiance = queue_get_float3(ubo.queue_capacity, src_queue, id, QUEUE_ITEM_RADIANCE_OFFSET);
 
-            sampler_start_new(payload.sampler, pixel, ubo.sample_index * ubo.max_bounces + segment); //TODO
+            sampler_start_new(payload.sampler, pixel, ubo.sample_index, segment);
 
             set_throughput(payload, queue_get_float3(ubo.queue_capacity, src_queue, id, QUEUE_ITEM_THROUGHPUT_OFFSET));
             set_brdf_pdf(payload, asfloat(queues[QUEUE_FIELD(ubo.queue_capacity, src_queue, id, QUEUE_ITEM_BRDF_PDF_OFFSET)]));
@@ -91,19 +91,7 @@ void main()
     radiance += get_radiance(payload);
 
     // Check if ray hit. If so, we continue the path by pushing to the queue.
-    if (!is_final_segment(payload) && segment < ubo.max_bounces) {
-
-        // Apply Russian roulette
-        const float max_throughput = max(max(throughput.r, throughput.g), throughput.b);
-        float u = sample_1d(payload.sampler);
-        if (max_throughput < 1.0) {
-            float q = max(0.0, 1.0 - max_throughput);
-            if (u < q) {
-                add_sample(pixel, radiance);
-                return;
-            }
-            throughput *= (1.0 / (1.0 - q));
-        }
+    if (segment < ubo.max_bounces && !is_final_segment(payload) && !russian_roulette(payload)) {
 
         const uint dst_queue = get_dst_queue(queues);
         uint item_index = queue_push(queues, ubo.queue_capacity, dst_queue);

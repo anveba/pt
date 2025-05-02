@@ -62,7 +62,7 @@ class PathTracer
     void update_uniforms(size_t flight_index);
     void write_command_buffer(VkCommandBuffer command_buffer, size_t flight_index);
 
-    static constexpr size_t IN_FLIGHT = 4;
+    static constexpr size_t IN_FLIGHT = 3;
 
   private:
     static constexpr bool USE_WAVEFRONT = true;

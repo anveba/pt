@@ -18,7 +18,13 @@
 #define QUEUE_ITEM_DIRECTION_OFFSET (12)
 #define QUEUE_ITEM_Y_OFFSET (15)
 
+#define USE_SOA
+
+#ifdef USE_SOA
+#define QUEUE_FIELD(capacity, queue, item, field) (QUEUE_OFFSET(capacity, queue) + QUEUE_START_OFFSET + (field) * (capacity) + (item))
+#else
 #define QUEUE_FIELD(capacity, queue, item, field) (QUEUE_OFFSET(capacity, queue) + QUEUE_START_OFFSET + (item) * QUEUE_ITEM_SIZE + (field))
+#endif
 
 inline void init_queues(inout RWStructuredBuffer<uint> queues, uint queue_capacity) {
     queues[QUEUE_OFFSET(queue_capacity, 0) + QUEUE_COUNT_OFFSET] = 0;
@@ -35,6 +41,7 @@ inline void reset_queue(inout RWStructuredBuffer<uint> queues, uint queue_capaci
     queues[QUEUE_OFFSET(queue_capacity, queue) + QUEUE_COUNT_OFFSET] = 0;
 }
 
+// Note: the pixel index is only 32-bits, meaning that large image resolutions can't be used.
 inline uint get_pixel_index(in RWStructuredBuffer<uint> queues) {
     return queues[QUEUE_NEXT_PIXEL_INDEX_OFFSET];
 }
