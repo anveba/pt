@@ -30,7 +30,7 @@
 #define TONE_MAP_GROUP_SIZE (16)
 
 #define QUEUE_ITEM_SIZE (16)
-#define QUEUE_METADATA_SIZE (2)
+#define QUEUE_METADATA_SIZE (4)
 #define QUEUE_STRIDE(capacity) ((capacity) * QUEUE_ITEM_SIZE + 1)
 #define QUEUE_OFFSET(capacity, queue) (QUEUE_METADATA_SIZE + QUEUE_STRIDE(capacity) * (queue))
 

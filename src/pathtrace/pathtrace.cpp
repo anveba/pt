@@ -80,7 +80,7 @@ PathTracer::PathTracer(
     , scene_buffer(device, command_pool, scene, VkBufferUsageFlagBits(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR), VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
     , scene_textures(device, command_pool, scene, 0)
     , acceleration_structure(device, command_pool, scene, scene_buffer)
-    , wavefront_queue(device, 512 * 512)
+    , wavefront_queue(device, 1)
     , uniform_buffers(device, sizeof(PathTraceUniformData) * IN_FLIGHT, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
     , texture_sampler(device)
     , descriptor_set_layout(device, get_descriptor_set_layout_bindings(texture_sampler.handle()), get_descriptor_binding_flags().data())
@@ -96,7 +96,6 @@ PathTracer::PathTracer(
     set_accumulation_image(command_pool, accumulation_image);
 
     uniform_data.sample_index = 0;
-    uniform_data.queue_capacity = wavefront_queue.get_queue_max_count();
 
     set_samples(1);
     set_max_bounces(1);
@@ -399,8 +398,6 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer, size_t fli
         size_t max_passes = (size_t)std::ceil((float)(uniform_data.width * uniform_data.height) / wavefront_queue.get_queue_max_count());
         size_t dispatches = (uniform_data.max_bounces + 1) * max_passes;
         for (size_t d = 0; d < dispatches; d++) {
-            memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            queue_swapper.write_command_buffer(command_buffer, flight_index);
             memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);
             vkCmdTraceRaysKHR(
                 command_buffer,
@@ -411,8 +408,13 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer, size_t fli
                 wavefront_queue.get_queue_max_count(),
                 1,
                 1);
+            if (d + 1 < dispatches) {
+                memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                queue_swapper.write_command_buffer(command_buffer, flight_index);
+            }
         }
     } else {
+        memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);
         vkCmdTraceRaysKHR(
             command_buffer,
             &ray_gen_sbt,
@@ -423,6 +425,7 @@ void PathTracer::write_command_buffer(VkCommandBuffer command_buffer, size_t fli
             uniform_data.height,
             1);
     }
+    memory_barrier(command_buffer, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 }
 
 void PathTracer::set_accumulation_image(CommandPool& command_pool, StorageImage& image)
@@ -432,11 +435,18 @@ void PathTracer::set_accumulation_image(CommandPool& command_pool, StorageImage&
     uniform_data.sample_index = 0;
     resetter.set_group_counts(resetter.compute_group_counts_2d(image.get_extent().width, image.get_extent().height, PTRESET_GROUP_SIZE));
 
+    wavefront_queue.rebuild(image.get_extent().width * image.get_extent().height);
+    uniform_data.queue_capacity = wavefront_queue.get_queue_max_count();
+
     VkDescriptorImageInfo image_descriptor = DescriptorSet::create_descriptor(image.get_view(), VK_IMAGE_LAYOUT_GENERAL);
-    VkWriteDescriptorSet write_descriptor_sets[IN_FLIGHT];
-    for (size_t i = 0; i < IN_FLIGHT; i++)
+    VkDescriptorBufferInfo queue_descriptor = DescriptorSet::create_descriptor(wavefront_queue.handle(), wavefront_queue.get_total_size());
+
+    VkWriteDescriptorSet write_descriptor_sets[IN_FLIGHT * 2];
+    for (size_t i = 0; i < IN_FLIGHT; i++) {
         write_descriptor_sets[i] = descriptor_sets[i].write_descriptor_set(&image_descriptor, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    DescriptorSet::update_write_descriptors(device, write_descriptor_sets, IN_FLIGHT);
+        write_descriptor_sets[IN_FLIGHT + i] = descriptor_sets[i].write_descriptor_set(&queue_descriptor, 10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    }
+    DescriptorSet::update_write_descriptors(device, write_descriptor_sets, IN_FLIGHT * 2);
 }
 
 void PathTracer::update_uniforms(size_t flight_index)

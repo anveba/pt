@@ -213,6 +213,28 @@ TextureData::TextureData(const uint8_t* data, size_t data_size, uint32_t width, 
     memcpy(this->data, data, data_size);
 }
 
+TextureData::TextureData(const uint8_t* compressed_data, size_t compressed_data_size, bool is_srgb)
+{
+    int x, y, comp;
+    if (stbi_info_from_memory(compressed_data, compressed_data_size, &x, &y, &comp)) {
+
+        uint32_t channel_count = static_cast<uint32_t>(comp);
+        channel_count = (channel_count == 3) ? 4 : channel_count;
+        format = get_vulkan_format_from_image_info(channel_count, is_srgb);
+
+        data = stbi_load_from_memory(compressed_data, compressed_data_size, &x, &y, &comp, channel_count);
+        if (data == NULL)
+            throw std::runtime_error("Failed to read texture from memory.");
+
+        loaded_with_stb_image = true;
+        width = static_cast<uint32_t>(x);
+        height = static_cast<uint32_t>(y);
+        data_size = static_cast<size_t>(width) * height * channel_count;
+    } else {
+        throw std::runtime_error("Failed to read texture from memory.");
+    }
+}
+
 TextureData::TextureData(TextureData&& other)
     : TextureData()
 {

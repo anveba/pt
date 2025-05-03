@@ -107,7 +107,7 @@ void UserInterface::new_frame(const UiInfo& info)
     ImGui::Combo("Rendering", (int*)&control_panel->render_type, "Path tracing\0Rasterisation\0");
     if (control_panel->render_type == RENDER_TYPE_PATH_TRACE) {
         ImGui::SliderInt("Samples per frame", (int*)&control_panel->samples_per_frame, 1, 64);
-        ImGui::SliderInt("Max bounces", (int*)&control_panel->max_bounces, 1, 16);
+        ImGui::SliderInt("Max bounces", (int*)&control_panel->max_bounces, 0, 15);
     }
     ImGui::End();
 }

@@ -4,9 +4,9 @@
 #include "rng.hlsli"
 #include "util.hlsli"
 
-#define USE_SOBOL
+// #define USE_SOBOL
 // #define USE_FAST_OWEN_SCRAMBLING
-#define USE_SLOW_OWEN_SCRAMBLING
+
 #define SOBOL_MAX_DIMENSION (4)
 
 // Sobol' sampler implementation is based on Practical Hash-based Owen Scrambling (Burley 2020).
@@ -104,7 +104,7 @@ uint scramble(uint x, uint seed) {
     x = laine_karras_permutation(x, seed);
     x = reversebits(x);
 
-    #elifdef USE_SLOW_OWEN_SCRAMBLING
+    #else
     if (seed & 1)
         x ^= 1u << 31u;
     for (uint i = 1; i < 32; i++) {
@@ -114,33 +114,29 @@ uint scramble(uint x, uint seed) {
             x ^= 1u << (31u - i);
     }
 
-    #else
-    x = x ^ seed;
-
     #endif
     return x;
 }
 
-uint sobol(uint index, uint dim)
+uint sobol(uint index, uint dimension)
 {
     uint x = 0;
     for (int b = 0; b < 32; b++) {
-      uint mask = (index >> b) & 1;
-      if (mask)
-        x ^= directions[dim][b];
+        uint mask = (index >> b) & 1;
+        x ^= mask * directions[dimension][b];
     }
     return x;
 }
 
 uint scrambled_sobol(uint shuffled, uint dimension, uint seed) {
     uint x = sobol(shuffled, dimension);
-    return scramble(x, hash_combine(seed, dimension));
+    return scramble(x, seed);
 }
 
 float sobol_sample_1d(inout SobolSampler s) {
     s.seed = hash(s.seed);
     uint shuffled_index = scramble(s.index, s.seed);
-    float result = 0x1p-32 * scrambled_sobol(shuffled_index, 0, s.seed);
+    float result = 0x1p-32 * scrambled_sobol(shuffled_index, 0, hash_combine(s.seed, 0x40b8b0ab));
     return min(result, JUST_BELOW_ONE);
 }
 
@@ -148,13 +144,13 @@ float2 sobol_sample_2d(inout SobolSampler s) {
     s.seed = hash(s.seed);
     uint shuffled_index = scramble(s.index, s.seed);
     float2 result = 0x1p-32 * float2(
-        scrambled_sobol(shuffled_index, 0, s.seed), 
-        scrambled_sobol(shuffled_index, 1, s.seed));
+        scrambled_sobol(shuffled_index, 0, hash_combine(s.seed, 0x40b8b0ab)), 
+        scrambled_sobol(shuffled_index, 1, hash_combine(s.seed, 0xd8a0e72c)));
     return min(result, JUST_BELOW_ONE);
 }
 
 void sobol_sampler_start_new(inout SobolSampler s, uint2 pixel, uint sample_index, uint seed) {
-    s.seed = hash_combine(seed, hash_combine(pixel.x, pixel.y));
+    s.seed = hash_combine(hash_combine(0x2ce9f109, seed), hash_combine(hash_combine(0x14757dc9, pixel.x), hash_combine(0x422c5873, pixel.y)));
     s.index = sample_index;
 }
 

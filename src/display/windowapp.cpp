@@ -126,7 +126,7 @@ void WindowedApplication::begin(const Scene& scene, Camera& camera)
     SwapChainSupport swap_chain_support;
     device.query_swap_chain_support(swap_chain_support, window);
     VkSurfaceFormatKHR surface_format = choose_surface_format(swap_chain_support.formats);
-    VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR; // choose_present_mode(swap_chain_support.present_modes);
+    VkPresentModeKHR present_mode = choose_present_mode(swap_chain_support.present_modes);
     Display display(device, window, surface_format, present_mode);
     camera.aspect_ratio = float(display.get_extent().width) / display.get_extent().height;
 

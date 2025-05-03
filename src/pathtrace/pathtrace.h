@@ -65,7 +65,7 @@ class PathTracer
     static constexpr size_t IN_FLIGHT = 3;
 
   private:
-    static constexpr bool USE_WAVEFRONT = true;
+    static constexpr bool USE_WAVEFRONT = false;
 
     Device& device;
 

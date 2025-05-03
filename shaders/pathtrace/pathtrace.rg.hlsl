@@ -55,6 +55,8 @@ void main()
     }
 
     float3 radiance = get_radiance(payload) / ubo.samples;
-    float3 prev = dest_image[pixel].rgb;
-    dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
+    if (radiance.r > 0.0 && radiance.g > 0.0 && radiance.b > 0.0) {
+        float3 prev = dest_image[pixel].rgb;
+        dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
+    }
 }

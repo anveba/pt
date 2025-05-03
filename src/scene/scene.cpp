@@ -304,8 +304,11 @@ void load_textures(const aiScene* scene, const std::unordered_map<std::string, T
                     embedded_data->mWidth,
                     embedded_data->mHeight,
                     t.second.is_srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM));
+            } else if (embedded_data->mHeight == 0)  {
+                textures[t.second.index] = std::move(TextureData(
+                    (uint8_t*)embedded_data->pcData, embedded_data->mWidth, t.second.is_srgb));
             } else {
-                throw std::runtime_error("Unsupported embedded texture format: " + std::to_string(embedded_data->mHeight));
+                throw std::runtime_error("Unsupported embedded texture format: " + std::string(embedded_data->achFormatHint));
             }
         }
     }
@@ -385,10 +388,15 @@ static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std:
         meshes[i].get_indexed_triangles().resize(mesh->mNumFaces);
         for (size_t j = 0; j < mesh->mNumFaces; j++) {
             IndexedTriangle& t = meshes[i].get_indexed_triangles()[j];
-            assert(mesh->mFaces->mNumIndices == 3);
+            if (mesh->mFaces[j].mNumIndices < 3)
+                continue;
+            assert(mesh->mFaces[j].mNumIndices == 3);
             t.indices[0] = mesh->mFaces[j].mIndices[0];
             t.indices[1] = mesh->mFaces[j].mIndices[1];
             t.indices[2] = mesh->mFaces[j].mIndices[2];
+            assert(t.indices[0] < meshes[i].get_vertices().size());
+            assert(t.indices[1] < meshes[i].get_vertices().size());
+            assert(t.indices[2] < meshes[i].get_vertices().size());
         }
     }
 }
