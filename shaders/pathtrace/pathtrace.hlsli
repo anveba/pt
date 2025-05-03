@@ -126,4 +126,14 @@ bool russian_roulette(inout RayPayload payload) {
     return false;
 }
 
+float3 correct_radiance(float3 radiance) {
+    if (radiance.r < 0.0 || !isfinite(radiance.r))
+        radiance.r = 0.0;
+    if (radiance.g < 0.0 || !isfinite(radiance.g))
+        radiance.g = 0.0;
+    if (radiance.b < 0.0 || !isfinite(radiance.b))
+        radiance.b = 0.0;
+    return radiance;
+}
+
 #endif

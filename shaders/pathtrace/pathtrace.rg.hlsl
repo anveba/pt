@@ -33,7 +33,7 @@ void main()
         TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
 
         // Check if initial ray hit. If so, we continue tracing rays.
-        if (!is_final_segment(payload) && !russian_roulette(payload)) {
+        if (!is_final_segment(payload)) {
 
             ray_desc.TMin = 0;
             ray_desc.TMax = INFINITY;
@@ -54,9 +54,7 @@ void main()
         }
     }
 
-    float3 radiance = get_radiance(payload) / ubo.samples;
-    if (radiance.r > 0.0 && radiance.g > 0.0 && radiance.b > 0.0) {
-        float3 prev = dest_image[pixel].rgb;
-        dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
-    }
+    float3 radiance = correct_radiance(get_radiance(payload) / ubo.samples);
+    float3 prev = dest_image[pixel].rgb;
+    dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
 }

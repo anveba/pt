@@ -161,7 +161,7 @@ static Vec3 process_roughness_metalness_normal(
         } else {
             float metalness;
             if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metalness) != aiReturn_SUCCESS)
-                metalness = 0.5f;
+                metalness = 0.0f;
             result.y = metalness;
         }
     }

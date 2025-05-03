@@ -70,11 +70,10 @@ void main()
 
     radiance += get_radiance(payload);
 
-    if (is_final_segment(payload) || russian_roulette(payload)) {
-        if (radiance.r > 0.0 && radiance.g > 0.0 && radiance.b > 0.0) {
-            float3 prev = dest_image[pixel].rgb;
-            dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
-        }
+    if (is_final_segment(payload) || (segment > 0 && russian_roulette(payload))) {
+        radiance = correct_radiance(radiance);
+        float3 prev = dest_image[pixel].rgb;
+        dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
 
     } else {
         const uint dst_queue = get_dst_queue(queues);

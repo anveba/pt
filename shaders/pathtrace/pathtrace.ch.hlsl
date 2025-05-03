@@ -319,7 +319,6 @@ void main(inout RayPayload payload, in Attributes attributes)
         no_scatter(payload);
         return;
     }
-    // float pdf = d * cos_theta(m);
 
     float pdf_brdf;
     float3 brdf = evaluate_brdf(brdf_input, i, o, m, pdf_brdf);
