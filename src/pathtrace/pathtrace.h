@@ -26,6 +26,7 @@ struct PathTraceUniformData
     alignas(4) float far;
     alignas(4) float focus_dist;
     alignas(4) float lens_radius;
+    alignas(4) float exposure;
 
     alignas(4) uint32_t sample_index;
     alignas(4) uint32_t samples;

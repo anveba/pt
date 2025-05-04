@@ -35,10 +35,10 @@ void main()
             uint pixel_compressed = queues[QUEUE_FIELD(ubo.queue_capacity, src_queue, id, QUEUE_ITEM_PIXEL_OFFSET)];
             pixel = uint2(pixel_compressed >> 16, pixel_compressed & 0x0000FFFF);
 
-            sampler_start_new(payload.sampler, pixel, sample_index, segment);
             radiance = queue_get_float3(queues, ubo.queue_capacity, src_queue, id, QUEUE_ITEM_RADIANCE_OFFSET);
 
             if (segment == 0) {
+                sampler_start_new(payload.sampler, pixel, sample_index, 0);
 
                 sample_camera_ray(sample_2d(payload.sampler), sample_2d(payload.sampler), 
                     pixel, uint2(ubo.width, ubo.height), 
@@ -46,12 +46,16 @@ void main()
                     ubo.lens_radius, ubo.focus_dist,
                     ray_desc.Origin, ray_desc.Direction);
 
+                sampler_start_new(payload.sampler, pixel, sample_index, 1);
+
                 ray_desc.TMin = ubo.near;
                 ray_desc.TMax = ubo.far;
 
                 set_new_path(payload);
 
             } else {
+                sampler_start_new(payload.sampler, pixel, sample_index, segment + 1);
+
                 set_throughput(payload, queue_get_float3(queues, ubo.queue_capacity, src_queue, id, QUEUE_ITEM_THROUGHPUT_OFFSET));
                 set_brdf_pdf(payload, asfloat(queues[QUEUE_FIELD(ubo.queue_capacity, src_queue, id, QUEUE_ITEM_BRDF_PDF_OFFSET)]));
 
@@ -75,7 +79,7 @@ void main()
 
     if (path_is_terminated && ((sample_index + 1) >= (ubo.sample_index + ubo.samples))) {
 
-        radiance = correct_radiance(radiance);
+        radiance = correct_radiance(radiance * ubo.exposure);
         float3 prev = dest_image[pixel].rgb;
         dest_image[pixel].rgb = prev + (radiance - ubo.samples * prev) / (ubo.sample_index + ubo.samples);
 

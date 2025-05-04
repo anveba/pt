@@ -100,6 +100,8 @@ float3 sample_light(
         float dist2 = dot(light_dir, light_dir);
         pdf *= dist2 / (area * cosine); 
         is_delta_light = false;
+        if (!isfinite(pdf))
+            return 0.0;
 
         PbrMaterial material = get_material(material_buffer, instance_data.material_index);
         float2 uv = bary.x * v_a.uv + bary.y * v_b.uv + bary.z * v_c.uv;

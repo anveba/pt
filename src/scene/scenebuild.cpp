@@ -141,6 +141,7 @@ static void parse_camera(TokenStream& lines, SceneParserState& state)
     float fov = 45.0f;
     float near = 0.1f, far = 1000.0f;
     float focus_dist = 0.0f, lens_radius = 0.0f;
+    float exposure = 1.0f;
 
     while (!lines.done()) {
         TokenStream tokens(lines.next(), ' ');
@@ -165,6 +166,8 @@ static void parse_camera(TokenStream& lines, SceneParserState& state)
             focus_dist = std::stof(tokens.next());
         } else if (tok == "lensradius") {
             lens_radius = std::stof(tokens.next());
+        } else if (tok == "exposure") {
+            exposure = std::stof(tokens.next());
         } else if (tok == "envcol") {
             state.environment_colour = parse_vector(tokens);
         } else if (tok == "envmap") {
@@ -191,6 +194,7 @@ static void parse_camera(TokenStream& lines, SceneParserState& state)
         far);
     state.camera.value().focus_dist = focus_dist;
     state.camera.value().lens_radius = lens_radius;
+    state.camera.value().exposure = exposure;
 }
 
 // Parses the objects section

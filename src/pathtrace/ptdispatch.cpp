@@ -98,7 +98,7 @@ void PathTraceDispatcher::render(const PathTraceParameters& parameters, uint32_t
 {
     samples_taken = 0;
 
-    uint32_t samples_to_dispatch = 1; // TODO find a good value
+    uint32_t samples_to_dispatch = 1;
     bool is_first_dispatch = true;
 
     do {
@@ -174,7 +174,7 @@ void PathTraceDispatcher::put_result(const PathTraceParameters& parameters)
 
     if (parameters.output_format != OutputImageFormat::HDR) {
         memory_barrier(command_buffers[current_dispatch_index], VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        tone_mapper.bind(command_buffers[current_dispatch_index], current_dispatch_index);
+        tone_mapper.bind(command_buffers[current_dispatch_index], 0);
         tone_mapper.dispatch(command_buffers[current_dispatch_index]);
     }
 

@@ -68,12 +68,12 @@ float3 aces(float3 col)
 [numthreads(TONE_MAP_GROUP_SIZE, TONE_MAP_GROUP_SIZE, 1)] 
 void main(uint3 dispatch_id : SV_DispatchThreadID)
 {
-    int2 coord = dispatch_id.xy;
+    int2 pixel = dispatch_id.xy;
 
-    if (coord.x >= ubo.width || coord.y >= ubo.height)
+    if (pixel.x >= ubo.width || pixel.y >= ubo.height)
         return;
 
-    float4 input = source_image[coord];
+    float4 input = source_image[pixel];
     
-    result_image[coord] = float4(aces(input.rgb), input.a);
+    result_image[pixel] = float4(aces(input.rgb), input.a);
 }

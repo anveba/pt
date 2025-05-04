@@ -28,6 +28,7 @@
 
 #define WFRESET_GROUP_SIZE (16)
 #define TONE_MAP_GROUP_SIZE (16)
+#define BLUR_GROUP_SIZE (16)
 
 #define QUEUE_ITEM_SIZE (16)
 #define QUEUE_METADATA_SIZE (32)

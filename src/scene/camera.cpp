@@ -12,8 +12,9 @@ Camera::Camera(Vec3 position,
     , aspect_ratio(aspect_ratio)
     , near(near)
     , far(far)
-    , focus_dist(0.0)
-    , lens_radius(0.0)
+    , focus_dist(0.0f)
+    , lens_radius(0.0f)
+    , exposure(1.0f)
 {
 }
 

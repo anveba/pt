@@ -40,10 +40,9 @@ static double build_emitter_table(
 
 static double calculate_object_intensity(const Mesh& mesh, const PbrMaterial& material, const std::vector<TextureData>& textures)
 {
-    constexpr size_t samples_per_triangle = 20; // TODO
+    constexpr size_t samples_per_triangle = 20; // TODO: use an appropriate value
 
-    uint32_t seed = static_cast<uint32_t>(clock());
-    Splitmix32 seeder(seed);
+    Splitmix32 seeder(0xbd7a0d48);
     Xshiro128 rng(seeder.next(), seeder.next(), seeder.next(), seeder.next());
 
     if ((material.map_bits() & EMISSION_MAP_BIT)) {
@@ -133,10 +132,12 @@ TableLightSampler::TableLightSampler(const Scene& scene, const uint32_t* instanc
         float intensity = calculate_object_intensity(scene.get_meshes()[variant.mesh_index], scene.get_materials()[variant.material_index], scene.get_textures());
         weights.push_back(intensity);
 
+        #ifdef PT_VERBOSE
         std::cout << "Emitter " << values.size() << " processed"
                   << ", triangles: " << emitter_tables.back().size()
                   << ", area: " << table_data.total_mesh_area
                   << ", intensity: " << intensity << std::endl;
+        #endif
 
         values.emplace_back();
         values.back().light_type = LIGHT_TYPE_EMITTER;
@@ -147,7 +148,10 @@ TableLightSampler::TableLightSampler(const Scene& scene, const uint32_t* instanc
     }
 
     size_t bin_count = scene.get_point_lights().size() + scene.get_directional_lights().size() + emitter_tables.size();
+    
+    #ifdef PT_VERBOSE
     std::cout << "Alias table for lights has " << bin_count << " bins." << std::endl;
+    #endif
 
     for (size_t i = 0; i < values.size(); i++)
         values[i].emitter_object.table_offset += table.size_in_bytes(bin_count) / granularity;

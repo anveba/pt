@@ -362,6 +362,7 @@ void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
     uniform_data.far = camera.far;
     uniform_data.focus_dist = camera.focus_dist;
     uniform_data.lens_radius = camera.lens_radius;
+    uniform_data.exposure = camera.exposure;
 
     uniform_data.sample_index = 0;
 }

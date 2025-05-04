@@ -146,8 +146,6 @@ float3 light_contribution(
     if (ubo.light_count == 0) 
         return 0.0;
 
-    //TODO only calculate emission if the light is not occluded
-
     float pdf, light_dist;
     float3 light_dir;
     bool is_delta_light;
@@ -165,6 +163,9 @@ float3 light_contribution(
         light_dist, 
         pdf,
         is_delta_light);
+
+    if (max(max(emission.r, emission.g), emission.b) <= 0.0)
+        return 0.0;
 
     float3 i = mul(from_world_space, light_dir);
     if (i.z <= 0.0) 

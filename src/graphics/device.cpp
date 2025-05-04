@@ -234,7 +234,9 @@ void Device::find_physical_device(
     DeviceUsage usage,
     VkSurfaceKHR surface)
 {
+    #ifdef PT_VERBOSE
     std::cout << "Found " << devices.size() << " physical devices:" << std::endl;
+    #endif
 
     std::vector<const char*> required_extensions;
     get_required_extensions(required_extensions, usage);
@@ -245,10 +247,13 @@ void Device::find_physical_device(
 
         PhysicalDeviceInfo info;
         query_physical_device_info(info, device, surface);
+
+        #ifdef PT_VERBOSE
         std::cout << "    " << info.properties.deviceName;
         if (info.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
             std::cout << " (CPU)";
         std::cout << ", heap size: " << info.heap_size / (1024 * 1024) << " MB" << std::endl;
+        #endif
 
         bool is_suitable = info.graphics_family_idx.has_value() &&
                            meets_feature_requirements(info, usage) &&
@@ -269,9 +274,6 @@ void Device::find_physical_device(
 
     physical = best_device;
     physical_device_info = best_device_info;
-
-    if (usage & DEVICE_USAGE_RAY_TRACE_BIT)
-        std::cout << "Device has a maximum ray recursion depth of " << physical_device_info.ray_tracing_properties.maxRayRecursionDepth << "." << std::endl;
 }
 
 void Device::init_logical_device(VulkanContext& context, DeviceUsage usage)
