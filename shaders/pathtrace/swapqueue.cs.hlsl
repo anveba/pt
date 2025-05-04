@@ -8,7 +8,6 @@ RWStructuredBuffer<uint> queues : register(u10);
 void main(uint3 dispatch_id : SV_DispatchThreadID)
 {
     if (dispatch_id.x == 0 && dispatch_id.y == 0 && dispatch_id.z == 0) {
-        increment_dispatch(queues);
         swap_queues(queues);
         reset_queue(queues, ubo.queue_capacity, get_dst_queue(queues));
     }

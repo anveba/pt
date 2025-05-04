@@ -41,9 +41,13 @@ class PostProcessor
                  { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, InFlight } };
     }
 
-    void write_command_buffer(VkCommandBuffer command_buffer, size_t flight_index)
+    void bind(VkCommandBuffer command_buffer, size_t flight_index) {
+        compute.bind(command_buffer, flight_index);
+    }
+
+    void dispatch(VkCommandBuffer command_buffer)
     {
-        compute.write_command_buffer(command_buffer, flight_index);
+        compute.dispatch(command_buffer);
     }
 
     void set_source_image(VkImageView source_image_view)

@@ -5,7 +5,7 @@
 #include "util.hlsli"
 
 #define USE_SOBOL
-// #define USE_FAST_OWEN_SCRAMBLING
+#define USE_FAST_OWEN_SCRAMBLING
 
 #define SOBOL_MAX_DIMENSION (4)
 

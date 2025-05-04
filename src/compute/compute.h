@@ -34,11 +34,14 @@ class Compute
         vkDestroyPipelineLayout(device.logical_handle(), pipeline_layout, nullptr);
     }
 
-    void write_command_buffer(VkCommandBuffer command_buffer, size_t flight_index)
+    void dispatch(VkCommandBuffer command_buffer)
     {
+        vkCmdDispatch(command_buffer, group_counts.x, group_counts.y, group_counts.z);
+    }
+
+    void bind(VkCommandBuffer command_buffer, size_t flight_index) {
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_sets[flight_index].handle(), 0, 0);
-        vkCmdDispatch(command_buffer, group_counts.x, group_counts.y, group_counts.z);
     }
 
     const Uint3& get_group_counts() const { return group_counts; };

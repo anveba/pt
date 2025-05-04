@@ -4,7 +4,6 @@
 #include "constants.h"
 
 #define QUEUE_CURRENT_SOURCE_OFFSET (0)
-#define QUEUE_CURRENT_DISPATCH (1)
 
 #define QUEUE_COUNT_OFFSET (0)
 #define QUEUE_START_OFFSET (1)
@@ -14,6 +13,7 @@
 #define QUEUE_ITEM_RADIANCE_OFFSET (4)
 #define QUEUE_ITEM_PIXEL_OFFSET (7)
 #define QUEUE_ITEM_ORIGIN_OFFSET (8)
+#define QUEUE_ITEM_SEGMENT_AND_SAMPLE_INDEX_OFFSET (11)
 #define QUEUE_ITEM_DIRECTION_OFFSET (12)
 
 #define USE_SOA
@@ -24,11 +24,10 @@
 #define QUEUE_FIELD(capacity, queue, item, field) (QUEUE_OFFSET(capacity, queue) + QUEUE_START_OFFSET + (item) * QUEUE_ITEM_SIZE + (field))
 #endif
 
-inline void init_queues(inout RWStructuredBuffer<uint> queues, uint queue_capacity) {
+inline void init_queues(inout RWStructuredBuffer<uint> queues, uint queue_capacity, uint initial_size) {
     queues[QUEUE_CURRENT_SOURCE_OFFSET] = 0;
-    queues[QUEUE_CURRENT_DISPATCH] = 0;
-    queues[QUEUE_OFFSET(queue_capacity, 0) + QUEUE_COUNT_OFFSET] = 0;
-    queues[QUEUE_OFFSET(queue_capacity, 1) + QUEUE_COUNT_OFFSET] = 0;
+    queues[QUEUE_OFFSET(queue_capacity, 0) + QUEUE_COUNT_OFFSET] = initial_size;
+    queues[QUEUE_OFFSET(queue_capacity, 1) + QUEUE_COUNT_OFFSET] = initial_size;
 }
 
 inline void swap_queues(inout RWStructuredBuffer<uint> queues) {
@@ -45,14 +44,6 @@ inline uint get_src_queue(in RWStructuredBuffer<uint> queues) {
 
 inline uint get_dst_queue(in RWStructuredBuffer<uint> queues) {
     return ((get_src_queue(queues) + 1) & 1);
-}
-
-inline uint get_current_dispatch(in RWStructuredBuffer<uint> queues) {
-    return queues[QUEUE_CURRENT_DISPATCH];
-}
-
-inline void increment_dispatch(inout RWStructuredBuffer<uint> queues) {
-    queues[QUEUE_CURRENT_DISPATCH] += 1;
 }
 
 inline uint queue_item_count(in RWStructuredBuffer<uint> queues, uint queue_capacity, uint queue) {

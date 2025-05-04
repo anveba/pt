@@ -5,6 +5,8 @@
 #include "geometry.hlsli"
 #include "lightsample.hlsli"
 
+// #define DISABLE_LIGHT_SAMPLING
+
 RaytracingAccelerationStructure bvh : register(b0);
 RWTexture2D<float4> dest_image : register(u1);
 cbuffer ubo : register(b2) { UniformBufferObject ubo; };
@@ -222,26 +224,32 @@ void main(inout RayPayload payload, in Attributes attributes)
     // TODO Emission calculation might not need UVs which is wasted computation if it is the final bounce
     float3 emission = get_emission(material, uv, textures, texture_sampler);
 
-    if (is_first_ray(payload)) {
+    if (max(max(emission.r, emission.g), emission.b) > 0.0 && dot(ObjectRayDirection(), obj_space_normal) < 0.0) {
+
+        #ifdef DISABLE_LIGHT_SAMPLING
         add_radiance(payload, emission);
-    
-    } else if (max(max(emission.r, emission.g), emission.b) > 0.0 && dot(ObjectRayDirection(), obj_space_normal) < 0.0) {
 
-        float3 world_ab = mul((float3x3)instance_data.transform, v_b.position - v_a.position);
-        float3 world_ac = mul((float3x3)instance_data.transform, v_c.position - v_a.position);
-        float3 emitter_scaled_world_normal = cross(world_ab, world_ac);
+        #else
+        if (is_first_ray(payload)) {
+            add_radiance(payload, emission);
+        } else {
+            float3 world_ab = mul((float3x3)instance_data.transform, v_b.position - v_a.position);
+            float3 world_ac = mul((float3x3)instance_data.transform, v_c.position - v_a.position);
+            float3 emitter_scaled_world_normal = cross(world_ab, world_ac);
 
-        float area = sqrt(dot(emitter_scaled_world_normal, emitter_scaled_world_normal)) * 0.5;
-        float dist2 = RayTCurrent() * RayTCurrent();
-        float cosine = abs(dot(WorldRayDirection(), normalize(emitter_scaled_world_normal)));
+            float area = sqrt(dot(emitter_scaled_world_normal, emitter_scaled_world_normal)) * 0.5;
+            float dist2 = RayTCurrent() * RayTCurrent();
+            float cosine = abs(dot(WorldRayDirection(), normalize(emitter_scaled_world_normal)));
 
-        float pdf_l = light_pdf(light_sampler, instance_data.emitter_index, PrimitiveIndex()); 
-        pdf_l *= dist2 / (area * cosine);
-        if (pdf_l > 0.0 && dist2 > 0.0) {
-            float w = sq(get_brdf_pdf(payload)) / (sq(get_brdf_pdf(payload)) + sq(pdf_l));
-            add_radiance(payload, w * emission);
-        }
-    } 
+            float pdf_l = light_pdf(light_sampler, instance_data.emitter_index, PrimitiveIndex()); 
+            pdf_l *= dist2 / (area * cosine);
+            if (pdf_l > 0.0 && dist2 > 0.0) {
+                float w = sq(get_brdf_pdf(payload)) / (sq(get_brdf_pdf(payload)) + sq(pdf_l));
+                add_radiance(payload, w * emission);
+            }
+        } 
+        #endif
+    }
 
     if (is_final_segment(payload)) 
         return;
@@ -309,7 +317,9 @@ void main(inout RayPayload payload, in Attributes attributes)
     }
 
     float3 intersection = WorldRayOrigin() + WorldRayDirection() * RayTCurrent() + true_world_normal * ORIGIN_OFFSET;
+    #ifndef DISABLE_LIGHT_SAMPLING
     add_radiance(payload, light_contribution(brdf_input, o, intersection, from_world_space, payload.sampler));
+    #endif
 
     float3 m;
     float w, pdf;

@@ -54,7 +54,11 @@ void main()
         }
     }
 
-    float3 radiance = correct_radiance(get_radiance(payload) / ubo.samples);
-    float3 prev = dest_image[pixel].rgb;
-    dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
+    float3 radiance = correct_radiance(get_radiance(payload));
+    if (ubo.sample_index == 0) {
+        dest_image[pixel] = float4(radiance, 1.0);
+    } else {
+        float3 prev = dest_image[pixel].rgb;
+        dest_image[pixel].rgb = prev + (radiance - ubo.samples * prev) / (ubo.sample_index + ubo.samples);
+    }
 }

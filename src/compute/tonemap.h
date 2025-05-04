@@ -60,9 +60,14 @@ class ToneMapper
         post_processor.set_result_image(image_view);
     }
 
-    void write_command_buffer(VkCommandBuffer command_buffer, size_t flight_index)
+    void bind(VkCommandBuffer command_buffer, size_t flight_index)
     {
-        post_processor.write_command_buffer(command_buffer, flight_index);
+        post_processor.bind(command_buffer, flight_index);
+    }
+
+    void dispatch(VkCommandBuffer command_buffer)
+    {
+        post_processor.dispatch(command_buffer);
     }
 
   private:

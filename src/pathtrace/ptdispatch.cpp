@@ -172,8 +172,11 @@ void PathTraceDispatcher::put_result(const PathTraceParameters& parameters)
     if (vkBeginCommandBuffer(command_buffers[current_dispatch_index], &cmd_buffer_begin_info) != VK_SUCCESS)
         throw std::runtime_error("Failed to begin command buffer.");
 
-    if (parameters.output_format != OutputImageFormat::HDR)
-        tone_mapper.write_command_buffer(command_buffers[current_dispatch_index], 0);
+    if (parameters.output_format != OutputImageFormat::HDR) {
+        memory_barrier(command_buffers[current_dispatch_index], VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        tone_mapper.bind(command_buffers[current_dispatch_index], current_dispatch_index);
+        tone_mapper.dispatch(command_buffers[current_dispatch_index]);
+    }
 
     copy_image(command_buffers[current_dispatch_index],
                accumulation_image.handle(),
