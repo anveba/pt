@@ -4,7 +4,15 @@
 
 Mat4 translation(Vec3 t)
 {
-    Mat4 translation(1, 0, 0, t.x, 0, 1, 0, t.y, 0, 0, 1, t.z, 0, 0, 0, 1);
+    Mat4 translation(
+        // Col 1
+        1, 0, 0, 0, 
+        // Col 2
+        0, 1, 0, 0, 
+        // Col 3
+        0, 0, 1, 0, 
+        // Col 4
+        t.x, t.y, t.z, 1);
     return translation;
 }
 
@@ -22,25 +30,25 @@ Mat4 rotation(Vec3 u, float angle)
     float sin = sinf(angle);
 
     Mat4 rotation(
-        // Row 1
+        // Col 1
         u.x * u.x + (1 - u.x * u.x) * cos,
-        u.x * u.y * (1 - cos) - u.z * sin,
-        u.x * u.z * (1 - cos) + u.y * sin,
-        0,
-
-        // Row 2
         u.y * u.x * (1 - cos) + u.z * sin,
-        u.y * u.y + (1 - u.y * u.y) * cos,
-        u.y * u.z * (1 - cos) - u.x * sin,
+        u.z * u.x * (1 - cos) - u.y * sin,
         0,
 
-        // Row 3
-        u.z * u.x * (1 - cos) - u.y * sin,
+        // Col 2
+        u.x * u.y * (1 - cos) - u.z * sin,
+        u.y * u.y + (1 - u.y * u.y) * cos,
         u.z * u.y * (1 - cos) + u.x * sin,
+        0,
+
+        // Col 3
+        u.x * u.z * (1 - cos) + u.y * sin,
+        u.y * u.z * (1 - cos) - u.x * sin,
         u.z * u.z + (1 - u.z * u.z) * cos,
         0,
 
-        // Row 4
+        // Col 4
         0,
         0,
         0,

@@ -16,25 +16,25 @@ struct TextureMetadata
 static Mat4 convert_matrix(aiMatrix4x4 m)
 {
     return Mat4(
-        // Row 1
+        // Col 1
         m.a1,
-        m.a2,
-        m.a3,
-        m.a4,
-        // Row 2
         m.b1,
-        m.b2,
-        m.b3,
-        m.b4,
-        // Row 3
         m.c1,
-        m.c2,
-        m.c3,
-        m.c4,
-        // Row 4
         m.d1,
+        // Col 2
+        m.a2,
+        m.b2,
+        m.c2,
         m.d2,
+        // Col 3
+        m.a3,
+        m.b3,
+        m.c3,
         m.d3,
+        // Col 4
+        m.a4,
+        m.b4,
+        m.c4,
         m.d4);
 }
 
