@@ -27,20 +27,22 @@ void main()
             ubo.lens_radius, ubo.focus_dist,
             ray_desc.Origin, ray_desc.Direction);
 
+        sampler_start_new(payload.sampler, pixel, sample_index, 1);
+
         set_new_path(payload);
         set_new_segment(payload, ubo.max_bounces == 0);
 
         TraceRay(bvh, RAY_FLAG_FORCE_OPAQUE, 0xff, 0, 0, 0, ray_desc, payload);
 
         // Check if initial ray hit. If so, we continue tracing rays.
-        if (!is_final_segment(payload) && !russian_roulette(payload)) {
+        if (!is_final_segment(payload)) {
 
             ray_desc.TMin = 0;
             ray_desc.TMax = INFINITY;
 
             for (uint segment = 1; segment <= ubo.max_bounces; segment++) {
 
-                sampler_start_new(payload.sampler, pixel, sample_index, segment);
+                sampler_start_new(payload.sampler, pixel, sample_index, segment + 1);
 
                 get_next_ray(payload, ray_desc.Origin, ray_desc.Direction);
 
@@ -54,7 +56,13 @@ void main()
         }
     }
 
-    float3 radiance = get_radiance(payload) / ubo.samples;
-    float3 prev = dest_image[pixel].rgb;
-    dest_image[pixel].rgb = prev + (radiance - prev) / (ubo.sample_index + 1);
+    // All radiance gets corrected at the end here which means that there may be different
+    // behaviour/output for different numbers of path iterations.
+    float3 radiance = correct_radiance(get_radiance(payload) * ubo.exposure);
+    if (ubo.sample_index == 0) {
+        dest_image[pixel] = float4(radiance / ubo.samples, 1.0);
+    } else {
+        float3 prev = dest_image[pixel].rgb;
+        dest_image[pixel].rgb = prev + (radiance - ubo.samples * prev) / (ubo.sample_index + ubo.samples);
+    }
 }

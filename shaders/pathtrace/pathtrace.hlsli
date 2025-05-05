@@ -13,6 +13,7 @@ struct UniformBufferObject
     float far;
     float focus_dist;
     float lens_radius;
+    float exposure;
 
     uint sample_index;
     uint samples;
@@ -49,68 +50,68 @@ struct ShadowRayPayload
     [[vk::location(1)]] float is_occluded;
 };
 
-RayPayload create_ray_payload() {
+inline RayPayload create_ray_payload() {
     RayPayload payload;
     payload.radiance.rgb = 0.0;
     return payload;
 }
 
-void set_new_path(inout RayPayload payload) {
+inline void set_new_path(inout RayPayload payload) {
     payload.throughput.rgb = 1.0;
     payload.radiance.w = -1.0;
 }
 
-bool is_first_ray(in RayPayload payload) {
+inline bool is_first_ray(in RayPayload payload) {
     return payload.radiance.w < 0.0;
 }
 
-bool is_final_segment(in RayPayload payload) {
+inline bool is_final_segment(in RayPayload payload) {
     return payload.throughput.w != 0.0;
 }
 
-void set_new_segment(inout RayPayload payload, bool is_final) {
+inline void set_new_segment(inout RayPayload payload, bool is_final) {
     payload.throughput.w = is_final ? 1.0 : 0.0;
 }
 
-void accumulate_throughput(inout RayPayload payload, float3 throughput) {
+inline void accumulate_throughput(inout RayPayload payload, float3 throughput) {
     payload.throughput.rgb *= throughput;
 }
 
-void add_radiance(inout RayPayload payload, float3 radiance) {
+inline void add_radiance(inout RayPayload payload, float3 radiance) {
     payload.radiance.rgb += payload.throughput.rgb * radiance.rgb;
 }
 
-void no_scatter(inout RayPayload payload) {
+inline void no_scatter(inout RayPayload payload) {
     payload.throughput.w = 1.0;
 }
 
-void set_next_ray(inout RayPayload payload, float3 intersection, float3 incoming_direction) {
+inline void set_next_ray(inout RayPayload payload, float3 intersection, float3 incoming_direction) {
     payload.intersection = intersection;
     payload.incoming_direction = incoming_direction;
 }
 
-void get_next_ray(in RayPayload payload, out float3 origin, out float3 direction) {
+inline void get_next_ray(in RayPayload payload, out float3 origin, out float3 direction) {
     origin = payload.intersection;
     direction = payload.incoming_direction;
 }
 
-float3 get_radiance(in RayPayload payload) {
+inline float3 get_radiance(in RayPayload payload) {
     return payload.radiance.rgb;
 }
 
-float get_brdf_pdf(in RayPayload payload) {
+inline float get_brdf_pdf(in RayPayload payload) {
     return payload.radiance.w;
 }
 
-void set_brdf_pdf(inout RayPayload payload, float pdf) {
+inline void set_brdf_pdf(inout RayPayload payload, float pdf) {
     payload.radiance.w = pdf;
 }
 
-float3 get_throughput(in RayPayload payload) {
+inline float3 get_throughput(in RayPayload payload) {
     return payload.throughput.rgb;
 }
 
-void set_throughput(inout RayPayload payload, float3 throughput) {
+inline void set_throughput(inout RayPayload payload, float3 throughput) {
     payload.throughput.rgb = throughput;
 }
 
@@ -125,6 +126,16 @@ bool russian_roulette(inout RayPayload payload) {
         accumulate_throughput(payload, 1.0 / (1.0 - q));
     }
     return false;
+}
+
+float3 correct_radiance(float3 radiance) {
+    if (radiance.r < 0.0 || !isfinite(radiance.r))
+        radiance.r = 0.0;
+    if (radiance.g < 0.0 || !isfinite(radiance.g))
+        radiance.g = 0.0;
+    if (radiance.b < 0.0 || !isfinite(radiance.b))
+        radiance.b = 0.0;
+    return radiance;
 }
 
 #endif

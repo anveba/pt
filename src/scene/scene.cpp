@@ -17,25 +17,25 @@ struct TextureMetadata
 static Mat4 convert_matrix(aiMatrix4x4 m)
 {
     return Mat4(
-        // Row 1
+        // Col 1
         m.a1,
-        m.a2,
-        m.a3,
-        m.a4,
-        // Row 2
         m.b1,
-        m.b2,
-        m.b3,
-        m.b4,
-        // Row 3
         m.c1,
-        m.c2,
-        m.c3,
-        m.c4,
-        // Row 4
         m.d1,
+        // Col 2
+        m.a2,
+        m.b2,
+        m.c2,
         m.d2,
+        // Col 3
+        m.a3,
+        m.b3,
+        m.c3,
         m.d3,
+        // Col 4
+        m.a4,
+        m.b4,
+        m.c4,
         m.d4);
 }
 
@@ -59,7 +59,9 @@ static std::optional<uint32_t> process_texture(
     aiString path;
     mat->GetTexture(texture_type, 0, &path);
     if (texture_map.count(path.C_Str()) == 0) {
+#ifdef PT_VERBOSE
         std::cout << "Using texture: " << path.C_Str() << std::endl;
+#endif
         texture_map[path.C_Str()] = { .index = current_texture_index,
                                       .is_srgb = texture_is_srgb(texture_type),
                                       .is_base_colour = texture_type == aiTextureType_BASE_COLOR };
@@ -135,45 +137,53 @@ static Vec3 process_roughness_metalness_normal(
 {
     Vec3 result;
 
-    std::optional<uint32_t> map = process_texture(mat, aiTextureType_GLTF_METALLIC_ROUGHNESS, texture_map, current_texture_index);
-    if (map) {
+    std::optional<uint32_t> gltf_map = process_texture(mat, aiTextureType_GLTF_METALLIC_ROUGHNESS, texture_map, current_texture_index);
+    if (gltf_map) {
         map_bits |= ROUGHNESS_METALNESS_MAP_BIT;
         float index_as_float;
-        memcpy(&index_as_float, &map.value(), 4);
+        memcpy(&index_as_float, &gltf_map.value(), 4);
         result.x = index_as_float;
     } else {
-        map = process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_map, current_texture_index);
-        if (map) {
-            map_bits |= ROUGHNESS_MAP_BIT;
+        std::optional<uint32_t> rough_map = process_texture(mat, aiTextureType_DIFFUSE_ROUGHNESS, texture_map, current_texture_index);
+        std::optional<uint32_t> metal_map = process_texture(mat, aiTextureType_METALNESS, texture_map, current_texture_index);
+        if (rough_map.has_value() && metal_map.has_value() && rough_map.value() == metal_map.value()) {
+            // Assimp doesn't always detect GLTF metal-roughness maps, so here we do it manually.
+            map_bits |= ROUGHNESS_METALNESS_MAP_BIT;
             float index_as_float;
-            memcpy(&index_as_float, &map.value(), 4);
+            memcpy(&index_as_float, &rough_map.value(), 4);
             result.x = index_as_float;
         } else {
-            float roughness;
-            if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness) != aiReturn_SUCCESS)
-                roughness = 0.5f;
-            result.x = roughness;
-        }
+            if (rough_map) {
+                map_bits |= ROUGHNESS_MAP_BIT;
+                float index_as_float;
+                memcpy(&index_as_float, &rough_map.value(), 4);
+                result.x = index_as_float;
+            } else {
+                float roughness;
+                if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness) != aiReturn_SUCCESS)
+                    roughness = 0.5f;
+                result.x = roughness;
+            }
 
-        map = process_texture(mat, aiTextureType_METALNESS, texture_map, current_texture_index);
-        if (map) {
-            map_bits |= METALNESS_MAP_BIT;
-            float index_as_float;
-            memcpy(&index_as_float, &map.value(), 4);
-            result.y = index_as_float;
-        } else {
-            float metalness;
-            if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metalness) != aiReturn_SUCCESS)
-                metalness = 0.5f;
-            result.y = metalness;
+            if (metal_map) {
+                map_bits |= METALNESS_MAP_BIT;
+                float index_as_float;
+                memcpy(&index_as_float, &metal_map.value(), 4);
+                result.y = index_as_float;
+            } else {
+                float metalness;
+                if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metalness) != aiReturn_SUCCESS)
+                    metalness = 0.0f;
+                result.y = metalness;
+            }
         }
     }
 
-    map = process_texture(mat, aiTextureType_NORMALS, texture_map, current_texture_index);
-    if (map) {
+    std::optional<uint32_t> normal_map = process_texture(mat, aiTextureType_NORMALS, texture_map, current_texture_index);
+    if (normal_map) {
         map_bits |= NORMAL_MAP_BIT;
         float index_as_float;
-        memcpy(&index_as_float, &map.value(), 4);
+        memcpy(&index_as_float, &normal_map.value(), 4);
         result.z = index_as_float;
     }
 
@@ -243,7 +253,6 @@ static Vec4 process_clearcoat_anisotropy(
     Vec4 result;
 
     std::optional<uint32_t> map = process_texture(mat, aiTextureType_CLEARCOAT, texture_map, current_texture_index);
-
     if (map) {
         map_bits |= CLEARCOAT_MAP_BIT;
         float index_as_float;
@@ -273,7 +282,6 @@ static void process_camera(
     const aiScene* scene,
     Camera& camera)
 {
-    std::cout << "Found " << scene->mNumCameras << " camera(s) in scene." << std::endl;
     if (scene->mNumCameras > 0) {
         const auto& scene_cam = scene->mCameras[0];
         Mat4 transform = convert_matrix(scene->mRootNode->mTransformation * scene->mRootNode->FindNode(scene_cam->mName)->mTransformation);
@@ -307,8 +315,11 @@ void load_textures(const aiScene* scene, const std::unordered_map<std::string, T
                     embedded_data->mWidth,
                     embedded_data->mHeight,
                     t.second.is_srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM));
+            } else if (embedded_data->mHeight == 0) {
+                textures[t.second.index] = std::move(TextureData(
+                    (uint8_t*)embedded_data->pcData, embedded_data->mWidth, t.second.is_srgb));
             } else {
-                throw std::runtime_error("Unsupported embedded texture format: " + std::to_string(embedded_data->mHeight));
+                throw std::runtime_error("Unsupported embedded texture format: " + std::string(embedded_data->achFormatHint));
             }
         }
     }
@@ -403,10 +414,15 @@ static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std:
         meshes[i].get_indexed_triangles().resize(mesh->mNumFaces);
         for (size_t j = 0; j < mesh->mNumFaces; j++) {
             IndexedTriangle& t = meshes[i].get_indexed_triangles()[j];
-            assert(mesh->mFaces->mNumIndices == 3);
+            if (mesh->mFaces[j].mNumIndices < 3)
+                continue;
+            assert(mesh->mFaces[j].mNumIndices == 3);
             t.indices[0] = mesh->mFaces[j].mIndices[0];
             t.indices[1] = mesh->mFaces[j].mIndices[1];
             t.indices[2] = mesh->mFaces[j].mIndices[2];
+            assert(t.indices[0] < meshes[i].get_vertices().size());
+            assert(t.indices[1] < meshes[i].get_vertices().size());
+            assert(t.indices[2] < meshes[i].get_vertices().size());
         }
     }
 }

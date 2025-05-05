@@ -4,7 +4,6 @@
 #include "constants.h"
 
 #define QUEUE_CURRENT_SOURCE_OFFSET (0)
-#define QUEUE_NEXT_PIXEL_INDEX_OFFSET (1)
 
 #define QUEUE_COUNT_OFFSET (0)
 #define QUEUE_START_OFFSET (1)
@@ -12,11 +11,10 @@
 #define QUEUE_ITEM_THROUGHPUT_OFFSET (0)
 #define QUEUE_ITEM_BRDF_PDF_OFFSET (3)
 #define QUEUE_ITEM_RADIANCE_OFFSET (4)
-#define QUEUE_ITEM_PATH_SEGMENT_OFFSET (7)
+#define QUEUE_ITEM_PIXEL_OFFSET (7)
 #define QUEUE_ITEM_ORIGIN_OFFSET (8)
-#define QUEUE_ITEM_X_OFFSET (11)
+#define QUEUE_ITEM_SEGMENT_AND_SAMPLE_INDEX_OFFSET (11)
 #define QUEUE_ITEM_DIRECTION_OFFSET (12)
-#define QUEUE_ITEM_Y_OFFSET (15)
 
 #define USE_SOA
 
@@ -26,11 +24,10 @@
 #define QUEUE_FIELD(capacity, queue, item, field) (QUEUE_OFFSET(capacity, queue) + QUEUE_START_OFFSET + (item) * QUEUE_ITEM_SIZE + (field))
 #endif
 
-inline void init_queues(inout RWStructuredBuffer<uint> queues, uint queue_capacity) {
-    queues[QUEUE_OFFSET(queue_capacity, 0) + QUEUE_COUNT_OFFSET] = 0;
-    queues[QUEUE_OFFSET(queue_capacity, 1) + QUEUE_COUNT_OFFSET] = 0;
+inline void init_queues(inout RWStructuredBuffer<uint> queues, uint queue_capacity, uint initial_size) {
     queues[QUEUE_CURRENT_SOURCE_OFFSET] = 0;
-    queues[QUEUE_NEXT_PIXEL_INDEX_OFFSET] = 0;
+    queues[QUEUE_OFFSET(queue_capacity, 0) + QUEUE_COUNT_OFFSET] = initial_size;
+    queues[QUEUE_OFFSET(queue_capacity, 1) + QUEUE_COUNT_OFFSET] = initial_size;
 }
 
 inline void swap_queues(inout RWStructuredBuffer<uint> queues) {
@@ -39,11 +36,6 @@ inline void swap_queues(inout RWStructuredBuffer<uint> queues) {
 
 inline void reset_queue(inout RWStructuredBuffer<uint> queues, uint queue_capacity, uint queue) {
     queues[QUEUE_OFFSET(queue_capacity, queue) + QUEUE_COUNT_OFFSET] = 0;
-}
-
-// Note: the pixel index is only 32-bits, meaning that large image resolutions can't be used.
-inline uint get_pixel_index(in RWStructuredBuffer<uint> queues) {
-    return queues[QUEUE_NEXT_PIXEL_INDEX_OFFSET];
 }
 
 inline uint get_src_queue(in RWStructuredBuffer<uint> queues) {
@@ -59,23 +51,29 @@ inline uint queue_item_count(in RWStructuredBuffer<uint> queues, uint queue_capa
 }
 
 inline uint queue_push(inout RWStructuredBuffer<uint> queues, uint queue_capacity, uint queue) {
-    // uint top = 0; // The compiler issues a warning if this is not set, even though it shouldn't need to be set.
-    // uint lane_count = WaveActiveCountBits(true);
-    // if (WaveIsFirstLane()) {
-    //     InterlockedAdd(queues[QUEUE_OFFSET(queue_capacity, queue) + QUEUE_COUNT_OFFSET], lane_count, top);
-    // }
-    // top = WaveReadLaneFirst(top);
-    // return top + WavePrefixCountBits(true);
+    uint top = 0; // The compiler issues a warning if this is not set, even though it shouldn't need to be set.
+    uint lane_count = WaveActiveCountBits(true);
+    if (WaveIsFirstLane()) {
+        InterlockedAdd(queues[QUEUE_OFFSET(queue_capacity, queue) + QUEUE_COUNT_OFFSET], lane_count, top);
+    }
+    top = WaveReadLaneFirst(top);
+    return top + WavePrefixCountBits(true);
 
-    uint top;
-    InterlockedAdd(queues[QUEUE_OFFSET(queue_capacity, queue) + QUEUE_COUNT_OFFSET], 1, top);
-    return top;
+    // uint top;
+    // InterlockedAdd(queues[QUEUE_OFFSET(queue_capacity, queue) + QUEUE_COUNT_OFFSET], 1, top);
+    // return top;
 }
 
-inline uint next_pixel_index(inout RWStructuredBuffer<uint> queues) {
-    uint top;
-    InterlockedAdd(queues[QUEUE_NEXT_PIXEL_INDEX_OFFSET], 1, top);
-    return top;
+inline float3 queue_get_float3(in RWStructuredBuffer<uint> queues, uint queue_capacity, uint queue, uint item, uint field) {
+    return float3(asfloat(queues[QUEUE_FIELD(queue_capacity, queue, item, field + 0)]),
+        asfloat(queues[QUEUE_FIELD(queue_capacity, queue, item, field + 1)]),
+        asfloat(queues[QUEUE_FIELD(queue_capacity, queue, item, field + 2)]));
+}
+
+inline void queue_set_float3(inout RWStructuredBuffer<uint> queues, uint queue_capacity, uint queue, uint item, uint field, float3 value) {
+    queues[QUEUE_FIELD(queue_capacity, queue, item, field + 0)] = asuint(value.x);
+    queues[QUEUE_FIELD(queue_capacity, queue, item, field + 1)] = asuint(value.y);
+    queues[QUEUE_FIELD(queue_capacity, queue, item, field + 2)] = asuint(value.z);
 }
 
 #endif

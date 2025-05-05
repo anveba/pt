@@ -25,8 +25,9 @@ class ToneMapper
                bool src_is_srgb = false,
                bool dst_is_srgb = false)
         : shader(device, "bin/shaders/compute/tonemap.cs.spv")
-        , uniform_buffer(device, InFlight * sizeof(ToneMapUbo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
-        , post_processor(device, descriptor_pool, command_pool, shader, uniform_buffer, sizeof(ToneMapUbo), Uint3(1, 1, 1), source_image_view, result_image_view)
+        , aligned_uniform_size(round_up_to<VkDeviceSize>(sizeof(ToneMapUbo), device.get_physical_device_info().properties.limits.minUniformBufferOffsetAlignment))
+        , uniform_buffer(device, InFlight * aligned_uniform_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+        , post_processor(device, descriptor_pool, command_pool, shader, uniform_buffer, sizeof(ToneMapUbo), aligned_uniform_size, Uint3(1, 1, 1), source_image_view, result_image_view)
     {
         set_parameters(extent.width, extent.height, src_is_srgb, dst_is_srgb);
     }
@@ -59,15 +60,23 @@ class ToneMapper
         post_processor.set_result_image(image_view);
     }
 
-    void write_command_buffer(VkCommandBuffer command_buffer, size_t flight_index)
+    void bind(VkCommandBuffer command_buffer, size_t flight_index)
     {
-        post_processor.write_command_buffer(command_buffer, flight_index);
+        post_processor.bind(command_buffer, flight_index);
+    }
+
+    void dispatch(VkCommandBuffer command_buffer)
+    {
+        post_processor.dispatch(command_buffer);
     }
 
   private:
     Shader shader;
+
+    VkDeviceSize aligned_uniform_size;
     SharedMemory uniform_buffer;
     ToneMapUbo uniform_data;
+
     PostProcessor<InFlight> post_processor;
 
     NO_COPY(ToneMapper);

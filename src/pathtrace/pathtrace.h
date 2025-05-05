@@ -16,6 +16,8 @@
 #include "scene/scenetex.h"
 #include "wavequeue.h"
 
+// #define USE_WAVEFRONT
+
 struct PathTraceUniformData
 {
     alignas(16) Mat4 inv_view;
@@ -24,6 +26,7 @@ struct PathTraceUniformData
     alignas(4) float far;
     alignas(4) float focus_dist;
     alignas(4) float lens_radius;
+    alignas(4) float exposure;
 
     alignas(4) uint32_t sample_index;
     alignas(4) uint32_t samples;
@@ -65,27 +68,27 @@ class PathTracer
     static constexpr size_t IN_FLIGHT = 3;
 
   private:
-    static constexpr bool USE_WAVEFRONT = true;
-
     Device& device;
 
     SceneBuffer scene_buffer;
     SceneTextures scene_textures;
     AccelerationStructure acceleration_structure;
-    WavefrontQueue wavefront_queue;
-
+    
     PathTraceUniformData uniform_data;
     SharedMemory uniform_buffers;
     Sampler texture_sampler;
-
+    
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
-
+    
     DescriptorSetLayout descriptor_set_layout;
     InitableArray<DescriptorSet, IN_FLIGHT> descriptor_sets;
 
+    #ifdef USE_WAVEFRONT
     Compute<IN_FLIGHT> resetter;
     Compute<IN_FLIGHT> queue_swapper;
+    WavefrontQueue wavefront_queue;
+    #endif
 
     VkBuffer shader_group_buffer;
     VkDeviceMemory shader_group_buffer_memory;

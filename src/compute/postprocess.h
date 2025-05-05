@@ -18,6 +18,7 @@ class PostProcessor
                   const Shader& shader,
                   const SharedMemory& ubo,
                   uint32_t uniform_data_size,
+                  uint32_t aligned_uniform_data_size,
                   Uint3 group_counts,
                   VkImageView source_image_view,
                   VkImageView result_image_view)
@@ -27,7 +28,7 @@ class PostProcessor
     {
         set_source_image(source_image_view);
         set_result_image(result_image_view);
-        set_uniform_descriptors(ubo, uniform_data_size);
+        set_uniform_descriptors(ubo, uniform_data_size, aligned_uniform_data_size);
     }
 
     ~PostProcessor()
@@ -40,9 +41,13 @@ class PostProcessor
                  { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, InFlight } };
     }
 
-    void write_command_buffer(VkCommandBuffer command_buffer, size_t flight_index)
+    void bind(VkCommandBuffer command_buffer, size_t flight_index) {
+        compute.bind(command_buffer, flight_index);
+    }
+
+    void dispatch(VkCommandBuffer command_buffer)
     {
-        compute.write_command_buffer(command_buffer, flight_index);
+        compute.dispatch(command_buffer);
     }
 
     void set_source_image(VkImageView source_image_view)
@@ -73,12 +78,12 @@ class PostProcessor
     InitableArray<DescriptorSet, InFlight> descriptor_sets;
     Compute<InFlight> compute;
 
-    void set_uniform_descriptors(const SharedMemory& ubo, uint32_t uniform_data_size)
+    void set_uniform_descriptors(const SharedMemory& ubo, uint32_t uniform_data_size, uint32_t aligned_uniform_data_size)
     {
         VkWriteDescriptorSet uniform_descriptor_writes[InFlight];
         VkDescriptorBufferInfo uniform_descriptors[InFlight];
         for (size_t i = 0; i < InFlight; i++) {
-            uniform_descriptors[i] = DescriptorSet::create_descriptor(ubo.handle(), uniform_data_size, i * uniform_data_size);
+            uniform_descriptors[i] = DescriptorSet::create_descriptor(ubo.handle(), uniform_data_size, i * aligned_uniform_data_size);
             uniform_descriptor_writes[i] = descriptor_sets[i].write_descriptor_set(&uniform_descriptors[i], 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         }
         DescriptorSet::update_write_descriptors(compute.get_device(), uniform_descriptor_writes, InFlight);

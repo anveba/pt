@@ -10,6 +10,7 @@ class TextureData
     TextureData();
     TextureData(const std::string& path, bool is_srgb);
     TextureData(const uint8_t* data, size_t data_size, uint32_t width, uint32_t height, VkFormat format);
+    TextureData(const uint8_t* data, size_t data_size, bool is_srgb);
     TextureData(TextureData&& other);
     ~TextureData();
 

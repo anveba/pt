@@ -22,6 +22,7 @@ class Camera
     float aspect_ratio;
     float near, far;
     float focus_dist, lens_radius;
+    float exposure;
 };
 
 #endif

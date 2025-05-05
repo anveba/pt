@@ -94,7 +94,10 @@ void PathTraceDisplayer::begin_render()
 
     path_tracer.write_command_buffer(command_buffers[current_frame], current_frame);
 
-    tone_mapper.write_command_buffer(command_buffers[current_frame], current_frame);
+    memory_barrier(command_buffers[current_frame], VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+    tone_mapper.bind(command_buffers[current_frame], current_frame);
+    tone_mapper.dispatch(command_buffers[current_frame]);
 
     blit_result(command_buffers[current_frame],
                 display.get_swap_chain().images[index],
