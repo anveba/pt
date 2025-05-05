@@ -36,8 +36,7 @@ float3 to_srgb(float3 x) {
     return float3(to_srgb(x.x), to_srgb(x.y), to_srgb(x.z));
 }
 
-float from_srgb(float x)
-{
+float from_srgb(float x) {
     return (x <= 0.04045) ? (x / 12.92) : pow((x + 0.055) / 1.055, 2.4);
 }
 

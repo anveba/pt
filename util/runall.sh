@@ -9,7 +9,7 @@ bounces=16
 
 width=1024
 height=1024
-format=hdr
+format=png
 
 for scene in "${args[@]}"; do
     echo "Running with scene: $scene"

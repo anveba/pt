@@ -72,7 +72,7 @@ static void parse_point_light(TokenStream& tokens,
     if (tokens.next() != ",")
         throw std::runtime_error("Invalid light syntax.");
 
-    Vec3 col = parse_vector(tokens);
+    Vec3 col = from_srgb(parse_vector(tokens));
 
     state.point_lights.push_back(PointLight(pos, col));
 }
@@ -88,7 +88,7 @@ static void parse_directional_light(TokenStream& tokens,
     if (tokens.next() != ",")
         throw std::runtime_error("Invalid light syntax");
 
-    Vec3 col = parse_vector(tokens);
+    Vec3 col = from_srgb(parse_vector(tokens));
 
     state.directional_lights.push_back(DirectionalLight(dir, col));
 }
@@ -169,7 +169,7 @@ static void parse_camera(TokenStream& lines, SceneParserState& state)
         } else if (tok == "exposure") {
             exposure = std::stof(tokens.next());
         } else if (tok == "envcol") {
-            state.environment_colour = parse_vector(tokens);
+            state.environment_colour = from_srgb(parse_vector(tokens));
         } else if (tok == "envmap") {
             state.environment_map_path = tokens.next();
         } else if (is_section_label(tok)) {

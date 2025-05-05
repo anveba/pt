@@ -90,8 +90,23 @@ static Vec4 process_base_colour(
         aiColor3D base_colour;
         if (mat->Get(AI_MATKEY_BASE_COLOR, base_colour) != aiReturn_SUCCESS)
             if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, base_colour) != aiReturn_SUCCESS)
-                base_colour = aiColor3D(1.0f, 1.0f, 1.0f);
-        return Vec4(base_colour.r, base_colour.g, base_colour.g, 1.0); // TODO include opacity
+                base_colour = aiColor3D(1.0f, 0.0f, 1.0f);
+        Vec3 linear_colour = from_srgb(Vec3(base_colour.r, base_colour.g, base_colour.b));
+
+        float opacity;
+        if (mat->Get(AI_MATKEY_OPACITY, opacity) != aiReturn_SUCCESS) {
+            float transparency;
+            if (mat->Get(AI_MATKEY_TRANSMISSION_FACTOR, transparency) != aiReturn_SUCCESS) {
+                if (mat->Get(AI_MATKEY_TRANSPARENCYFACTOR, transparency) != aiReturn_SUCCESS) {
+                    opacity = 1.0f;
+                } else {
+                    opacity = 1.0f - transparency;
+                }
+            } else {
+                opacity = 1.0f - transparency;
+            }
+        }
+        return Vec4(linear_colour, opacity);
     }
 }
 
@@ -116,9 +131,10 @@ static Vec4 process_emission(
         aiColor3D emission_colour;
         if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, emission_colour) != aiReturn_SUCCESS)
             emission_colour = aiColor3D(0.0f, 0.0f, 0.0f);
-        result.x = emission_colour.r;
-        result.y = emission_colour.g;
-        result.z = emission_colour.b;
+        Vec3 linear_emission = from_srgb(Vec3(emission_colour.r, emission_colour.g, emission_colour.b));
+        result.x = linear_emission.r;
+        result.y = linear_emission.g;
+        result.z = linear_emission.b;
     }
 
     float emission_intensity;
