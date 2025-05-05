@@ -37,6 +37,7 @@ class PbrMaterial
     inline const uint32_t& map_bits() const { return asuint(rough_metal_normal_map_bits.w); }
 
     bool is_emitter() const;
+    inline bool is_transparent() const { return bool(map_bits() & MATERIAL_IS_TRANSPARENT_BIT); }
 
     uint32_t emission_map_index() const;
 

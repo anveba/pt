@@ -27,19 +27,19 @@ static inline void get_shader_group_alignments(
     base_alignment = device.get_physical_device_info().ray_tracing_properties.shaderGroupBaseAlignment;
 }
 
-constexpr size_t SHADER_BINDING_TABLE_ENTRY_COUNTS[4] = { 1, 2, 1, 0 }; // Ray gen, miss, hit, callable
+constexpr size_t SHADER_BINDING_TABLE_ENTRY_COUNTS[4] = { 1, 2, 2, 0 }; // Ray gen, miss, hit, callable
 
 static std::vector<VkDescriptorSetLayoutBinding> get_descriptor_set_layout_bindings(const VkSampler& sampler)
 {
     VkDescriptorSetLayoutBinding acceleration_structure_layout_binding = DescriptorSetLayout::create_layout_binding(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding result_image_layout_binding = DescriptorSetLayout::create_layout_binding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR);
     VkDescriptorSetLayoutBinding uniform_buffer_binding = DescriptorSetLayout::create_layout_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-    VkDescriptorSetLayoutBinding vertex_binding = DescriptorSetLayout::create_layout_binding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-    VkDescriptorSetLayoutBinding index_binding = DescriptorSetLayout::create_layout_binding(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-    VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-    VkDescriptorSetLayoutBinding material_binding = DescriptorSetLayout::create_layout_binding(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-    VkDescriptorSetLayoutBinding texture_sampler_binding = DescriptorSetLayout::create_layout_binding(7, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 1, &sampler);
-    VkDescriptorSetLayoutBinding texture_binding = DescriptorSetLayout::create_layout_binding(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, MAX_TEXTURE_COUNT);
+    VkDescriptorSetLayoutBinding vertex_binding = DescriptorSetLayout::create_layout_binding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding index_binding = DescriptorSetLayout::create_layout_binding(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding object_binding = DescriptorSetLayout::create_layout_binding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding material_binding = DescriptorSetLayout::create_layout_binding(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
+    VkDescriptorSetLayoutBinding texture_sampler_binding = DescriptorSetLayout::create_layout_binding(7, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 1, &sampler);
+    VkDescriptorSetLayoutBinding texture_binding = DescriptorSetLayout::create_layout_binding(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, MAX_TEXTURE_COUNT);
     VkDescriptorSetLayoutBinding light_sampler_binding = DescriptorSetLayout::create_layout_binding(9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
     VkDescriptorSetLayoutBinding queue_binding = DescriptorSetLayout::create_layout_binding(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_COMPUTE_BIT);
 
@@ -175,72 +175,99 @@ void PathTracer::create_pipeline()
     Shader ray_miss(device, "bin/shaders/pathtrace/pathtrace.ms.spv");
     Shader shadow_ray_miss(device, "bin/shaders/pathtrace/shadowray.ms.spv");
     Shader ray_closest_hit(device, "bin/shaders/pathtrace/pathtrace.ch.spv");
+    Shader shadow_any_hit(device, "bin/shaders/pathtrace/shadowray.ah.spv");
 
     std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
 
-    // Ray generation
-    VkPipelineShaderStageCreateInfo ray_gen_stage = {};
-    ray_gen_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    ray_gen_stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-    ray_gen_stage.module = ray_gen.handle();
-    ray_gen_stage.pName = "main";
-    shader_stages.push_back(ray_gen_stage);
-    VkRayTracingShaderGroupCreateInfoKHR ray_gen_group{};
-    ray_gen_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-    ray_gen_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-    ray_gen_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
-    ray_gen_group.closestHitShader = VK_SHADER_UNUSED_KHR;
-    ray_gen_group.anyHitShader = VK_SHADER_UNUSED_KHR;
-    ray_gen_group.intersectionShader = VK_SHADER_UNUSED_KHR;
-    shader_groups.push_back(ray_gen_group);
+    {
+        // Ray generation
+        VkPipelineShaderStageCreateInfo ray_gen_stage = {};
+        ray_gen_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ray_gen_stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        ray_gen_stage.module = ray_gen.handle();
+        ray_gen_stage.pName = "main";
+        shader_stages.push_back(ray_gen_stage);
+        VkRayTracingShaderGroupCreateInfoKHR ray_gen_group{};
+        ray_gen_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        ray_gen_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        ray_gen_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+        ray_gen_group.closestHitShader = VK_SHADER_UNUSED_KHR;
+        ray_gen_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+        ray_gen_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+        shader_groups.push_back(ray_gen_group);
+    }
 
-    // Ray miss
-    VkPipelineShaderStageCreateInfo miss_stage = {};
-    miss_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    miss_stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-    miss_stage.module = ray_miss.handle();
-    miss_stage.pName = "main";
-    shader_stages.push_back(miss_stage);
-    VkRayTracingShaderGroupCreateInfoKHR miss_group{};
-    miss_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-    miss_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-    miss_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
-    miss_group.closestHitShader = VK_SHADER_UNUSED_KHR;
-    miss_group.anyHitShader = VK_SHADER_UNUSED_KHR;
-    miss_group.intersectionShader = VK_SHADER_UNUSED_KHR;
-    shader_groups.push_back(miss_group);
+    {
+        // Ray miss
+        VkPipelineShaderStageCreateInfo miss_stage = {};
+        miss_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        miss_stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
+        miss_stage.module = ray_miss.handle();
+        miss_stage.pName = "main";
+        shader_stages.push_back(miss_stage);
+        VkRayTracingShaderGroupCreateInfoKHR miss_group{};
+        miss_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        miss_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        miss_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+        miss_group.closestHitShader = VK_SHADER_UNUSED_KHR;
+        miss_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+        miss_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+        shader_groups.push_back(miss_group);
+    }
 
-    // Shadow ray miss
-    VkPipelineShaderStageCreateInfo shadow_ray_miss_stage = {};
-    shadow_ray_miss_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shadow_ray_miss_stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-    shadow_ray_miss_stage.module = shadow_ray_miss.handle();
-    shadow_ray_miss_stage.pName = "main";
-    shader_stages.push_back(shadow_ray_miss_stage);
-    VkRayTracingShaderGroupCreateInfoKHR shadow_ray_miss_group{};
-    shadow_ray_miss_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-    shadow_ray_miss_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-    shadow_ray_miss_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
-    shadow_ray_miss_group.closestHitShader = VK_SHADER_UNUSED_KHR;
-    shadow_ray_miss_group.anyHitShader = VK_SHADER_UNUSED_KHR;
-    shadow_ray_miss_group.intersectionShader = VK_SHADER_UNUSED_KHR;
-    shader_groups.push_back(shadow_ray_miss_group);
+    {
+        // Shadow ray miss
+        VkPipelineShaderStageCreateInfo shadow_ray_miss_stage = {};
+        shadow_ray_miss_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shadow_ray_miss_stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
+        shadow_ray_miss_stage.module = shadow_ray_miss.handle();
+        shadow_ray_miss_stage.pName = "main";
+        shader_stages.push_back(shadow_ray_miss_stage);
+        VkRayTracingShaderGroupCreateInfoKHR shadow_ray_miss_group{};
+        shadow_ray_miss_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        shadow_ray_miss_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        shadow_ray_miss_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+        shadow_ray_miss_group.closestHitShader = VK_SHADER_UNUSED_KHR;
+        shadow_ray_miss_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+        shadow_ray_miss_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+        shader_groups.push_back(shadow_ray_miss_group);
+    }
 
-    // Ray closest hit
-    VkPipelineShaderStageCreateInfo closest_hit_stage = {};
-    closest_hit_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    closest_hit_stage.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-    closest_hit_stage.module = ray_closest_hit.handle();
-    closest_hit_stage.pName = "main";
-    shader_stages.push_back(closest_hit_stage);
-    VkRayTracingShaderGroupCreateInfoKHR closest_hit_group{};
-    closest_hit_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-    closest_hit_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-    closest_hit_group.generalShader = VK_SHADER_UNUSED_KHR;
-    closest_hit_group.closestHitShader = static_cast<uint32_t>(shader_stages.size()) - 1;
-    closest_hit_group.anyHitShader = VK_SHADER_UNUSED_KHR;
-    closest_hit_group.intersectionShader = VK_SHADER_UNUSED_KHR;
-    shader_groups.push_back(closest_hit_group);
+    {
+        // Ray closest hit
+        VkPipelineShaderStageCreateInfo closest_hit_stage = {};
+        closest_hit_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        closest_hit_stage.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        closest_hit_stage.module = ray_closest_hit.handle();
+        closest_hit_stage.pName = "main";
+        shader_stages.push_back(closest_hit_stage);
+        VkRayTracingShaderGroupCreateInfoKHR closest_hit_group{};
+        closest_hit_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        closest_hit_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+        closest_hit_group.generalShader = VK_SHADER_UNUSED_KHR;
+        closest_hit_group.closestHitShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+        closest_hit_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+        closest_hit_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+        shader_groups.push_back(closest_hit_group);
+    }
+
+    {
+        // Shadow any hit
+        VkPipelineShaderStageCreateInfo shadow_any_hit_stage = {};
+        shadow_any_hit_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shadow_any_hit_stage.stage = VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+        shadow_any_hit_stage.module = shadow_any_hit.handle();
+        shadow_any_hit_stage.pName = "main";
+        shader_stages.push_back(shadow_any_hit_stage);
+        VkRayTracingShaderGroupCreateInfoKHR shadow_any_hit_group{};
+        shadow_any_hit_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        shadow_any_hit_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+        shadow_any_hit_group.generalShader = VK_SHADER_UNUSED_KHR;
+        shadow_any_hit_group.closestHitShader = VK_SHADER_UNUSED_KHR;
+        shadow_any_hit_group.anyHitShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+        shadow_any_hit_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+        shader_groups.push_back(shadow_any_hit_group);
+    }
 
     VkRayTracingPipelineCreateInfoKHR raytracing_pipeline_create_info{};
     raytracing_pipeline_create_info.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;

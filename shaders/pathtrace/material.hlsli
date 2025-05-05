@@ -101,5 +101,8 @@ void get_clearcoat_anisotropy(
     anisotropy = material.cc_ccrgh_aniso.b;
 }
 
+bool is_transparent(in PbrMaterial material) {
+    return map_bits(material) & MATERIAL_IS_TRANSPARENT_BIT;
+}
 
 #endif

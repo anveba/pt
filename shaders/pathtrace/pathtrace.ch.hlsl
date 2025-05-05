@@ -174,22 +174,23 @@ float3 light_contribution(
     ray_desc.TMin = 0.0;
     ray_desc.TMax = light_dist - 1e-5;
 
-    //TODO deal with opacity
-
     ShadowRayPayload payload;
     payload.is_occluded = true;
+    payload.throughput = 1.0;
     TraceRay(
         bvh, 
-        RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, 
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, 
         0xff,
-        0,
+        1,
         0,
         1,
         ray_desc,
         payload);
 
-    if (payload.is_occluded)
+    if (payload.is_occluded || payload.throughput < 1e-5)
         return 0.0;
+
+    emission *= payload.throughput;
 
     i = normalize(i);
     float3 m = normalize(i + o);

@@ -280,6 +280,23 @@ TextureData& TextureData::operator=(TextureData&& other)
     return *this;
 }
 
+bool TextureData::has_alpha_less_than_one()
+{
+    if (get_image_format() == VK_FORMAT_R8G8B8A8_UNORM || get_image_format() == VK_FORMAT_R8G8B8A8_SRGB) {
+        for (size_t i = 0; i < size_t(width) * height; i++) {
+            if (data[i * 4 + 3] < 255)
+                return true;
+        }
+        return false;
+    } else if (get_image_format() == VK_FORMAT_R8G8_UNORM || get_image_format() == VK_FORMAT_R8G8_SRGB) {
+        return false;
+    } else if (get_image_format() == VK_FORMAT_R8_UNORM || get_image_format() == VK_FORMAT_R8_SRGB) {
+        return false;
+    } else {
+        throw std::runtime_error("Texture access for format not supported: " + std::to_string(get_image_format()));
+    }
+}
+
 void TextureData::free_data()
 {
     if (data != nullptr) {

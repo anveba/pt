@@ -11,6 +11,7 @@ struct TextureMetadata
 {
     uint32_t index;
     bool is_srgb;
+    bool is_base_colour;
 };
 
 static Mat4 convert_matrix(aiMatrix4x4 m)
@@ -59,7 +60,9 @@ static std::optional<uint32_t> process_texture(
     mat->GetTexture(texture_type, 0, &path);
     if (texture_map.count(path.C_Str()) == 0) {
         std::cout << "Using texture: " << path.C_Str() << std::endl;
-        texture_map[path.C_Str()] = { .index = current_texture_index, .is_srgb = texture_is_srgb(texture_type) };
+        texture_map[path.C_Str()] = { .index = current_texture_index,
+                                      .is_srgb = texture_is_srgb(texture_type),
+                                      .is_base_colour = texture_type == aiTextureType_BASE_COLOR };
         return current_texture_index++;
     } else {
         return texture_map[path.C_Str()].index;
@@ -311,6 +314,17 @@ void load_textures(const aiScene* scene, const std::unordered_map<std::string, T
     }
 }
 
+static void detect_transparency(PbrMaterial& mat, std::vector<TextureData>& textures)
+{
+    if (mat.map_bits() & BASE_COLOUR_MAP_BIT) {
+        uint32_t base_colour_map_index = asuint(mat.base_colour.r);
+        if (textures[base_colour_map_index].has_alpha_less_than_one())
+            mat.map_bits() |= MATERIAL_IS_TRANSPARENT_BIT;
+    } else if (mat.base_colour.a < 1.0f) {
+        mat.map_bits() |= MATERIAL_IS_TRANSPARENT_BIT;
+    }
+}
+
 static void process_materials(
     const aiScene* scene,
     std::vector<PbrMaterial>& materials,
@@ -345,6 +359,10 @@ static void process_materials(
     textures.resize(texture_map.size());
 
     load_textures(scene, texture_map, textures, base_directory);
+
+    for (PbrMaterial& mat : materials) {
+        detect_transparency(mat, textures);
+    }
 }
 
 static void process_meshes(const aiScene* scene, std::vector<Mesh>& meshes, std::vector<ObjectVariant>& object_variants)

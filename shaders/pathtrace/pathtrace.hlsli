@@ -45,7 +45,8 @@ struct RayPayload
 
 struct ShadowRayPayload
 {
-    [[vk::location(0)]] bool is_occluded; 
+    [[vk::location(0)]] float throughput; 
+    [[vk::location(1)]] float is_occluded;
 };
 
 RayPayload create_ray_payload() {
