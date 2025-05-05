@@ -147,7 +147,7 @@ TextureData& TextureData::operator=(TextureData&& other)
     return *this;
 }
 
-bool TextureData::has_alpha_less_than_one()
+bool TextureData::has_alpha_less_than_one() const
 {
     if (get_image_format() == VK_FORMAT_R8G8B8A8_UNORM || get_image_format() == VK_FORMAT_R8G8B8A8_SRGB) {
         for (size_t i = 0; i < size_t(width) * height; i++) {

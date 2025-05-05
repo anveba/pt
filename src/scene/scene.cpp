@@ -325,15 +325,16 @@ void load_textures(const aiScene* scene, const std::unordered_map<std::string, T
     }
 }
 
-static void detect_transparency(PbrMaterial& mat, std::vector<TextureData>& textures)
+static bool has_transparency(const PbrMaterial& mat, const std::vector<TextureData>& textures)
 {
     if (mat.map_bits() & BASE_COLOUR_MAP_BIT) {
         uint32_t base_colour_map_index = asuint(mat.base_colour.r);
         if (textures[base_colour_map_index].has_alpha_less_than_one())
-            mat.map_bits() |= MATERIAL_IS_TRANSPARENT_BIT;
+            return true;
     } else if (mat.base_colour.a < 1.0f) {
-        mat.map_bits() |= MATERIAL_IS_TRANSPARENT_BIT;
+        return true;
     }
+    return false;
 }
 
 static void process_materials(
@@ -372,7 +373,9 @@ static void process_materials(
     load_textures(scene, texture_map, textures, base_directory);
 
     for (PbrMaterial& mat : materials) {
-        detect_transparency(mat, textures);
+        if (has_transparency(mat, textures)) {
+            mat.map_bits() |= MATERIAL_IS_TRANSPARENT_BIT;
+        }
     }
 }
 

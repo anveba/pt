@@ -22,7 +22,7 @@ class TextureData
     inline const void* data_handle() const { return data; }
     bool contains_data();
     VkFormat get_image_format() const { return format; };
-    bool has_alpha_less_than_one();
+    bool has_alpha_less_than_one() const;
 
     TextureData& operator=(TextureData&& other);
 

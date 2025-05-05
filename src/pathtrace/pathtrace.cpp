@@ -383,8 +383,9 @@ void PathTracer::set_camera(CommandPool& command_pool, const Camera& camera)
     Mat4 view = camera.view_matrix();
     Mat4 proj = camera.projection_matrix();
 
-    uniform_data.inv_proj = glm::inverse(proj);
-    uniform_data.inv_view = glm::inverse(view);
+    // To conform to row-majorness, the matrices have to be transposed.
+    uniform_data.inv_proj = glm::transpose(glm::inverse(proj));
+    uniform_data.inv_view = glm::transpose(glm::inverse(view));
     uniform_data.near = camera.near;
     uniform_data.far = camera.far;
     uniform_data.focus_dist = camera.focus_dist;

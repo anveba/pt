@@ -3,7 +3,7 @@
 
 struct UniformBufferObject
 {
-    float4x4 view_proj;
+    row_major float4x4 view_proj;
     float3 view_pos;
     float3 inv_light_dir_norm;
 };

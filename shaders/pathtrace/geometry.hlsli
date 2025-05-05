@@ -6,8 +6,8 @@ struct InstanceData {
     uint index_index;
     uint emitter_index;
     uint material_index;
-    float4x4 transform;
-    float3x3 normal;
+    row_major float4x4 transform;
+    row_major float3x3 normal;
 };
 
 struct Vertex {

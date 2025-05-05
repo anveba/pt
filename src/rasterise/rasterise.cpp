@@ -333,7 +333,8 @@ void Rasteriser::set_camera(CommandPool& command_pool, const Camera& camera)
     Mat4 view = camera.view_matrix();
     Mat4 proj = camera.projection_matrix();
 
-    uniform_data.mvp = proj * view;
+    // To conform to row-majorness, the matrix has to be transposed.
+    uniform_data.mvp = glm::transpose(proj * view);
     uniform_data.view_pos = camera.position;
     uniform_data.inv_light_dir_norm = glm::normalize(-light_dir);
 }

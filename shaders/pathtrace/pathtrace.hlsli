@@ -7,8 +7,8 @@
 
 struct UniformBufferObject
 {
-    float4x4 inv_view;
-    float4x4 inv_proj;
+    row_major float4x4 inv_view;
+    row_major float4x4 inv_proj;
     float near;
     float far;
     float focus_dist;
