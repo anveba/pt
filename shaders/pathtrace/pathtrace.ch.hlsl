@@ -203,7 +203,7 @@ float3 light_contribution(
     if (is_delta_light) {
         return emission * brdf * cos_theta(i) / pdf;
     } else {
-        float w = sq(pdf) / (sq(pdf) + sq(pdf_brdf));
+        float w = pdf / (pdf + pdf_brdf); // Balance heuristic
         return w * emission * brdf * cos_theta(i) / pdf;
     }
 }
@@ -246,7 +246,7 @@ void main(inout RayPayload payload, in Attributes attributes)
             float pdf_l = light_pdf(light_sampler, instance_data.emitter_index, PrimitiveIndex()); 
             pdf_l *= dist2 / (area * cosine);
             if (pdf_l > 0.0 && dist2 > 0.0) {
-                float w = sq(get_brdf_pdf(payload)) / (sq(get_brdf_pdf(payload)) + sq(pdf_l));
+                float w = get_brdf_pdf(payload) / (get_brdf_pdf(payload) + pdf_l); // Balance heuristic
                 add_radiance(payload, w * emission);
             }
         } 
