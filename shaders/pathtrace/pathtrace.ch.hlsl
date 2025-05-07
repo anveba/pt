@@ -5,7 +5,8 @@
 #include "geometry.hlsli"
 #include "lightsample.hlsli"
 
-// #define DISABLE_LIGHT_SAMPLING
+#define SAMPLE_LIGHTS
+#define SAMPLE_VISIBLE_MICRONORMALS
 
 RaytracingAccelerationStructure bvh : register(b0);
 RWTexture2D<float4> dest_image : register(u1);
@@ -100,7 +101,13 @@ float3 evaluate_brdf(in BrdfEvalInput input, float3 i, float3 o, float3 m, out f
 
     const float diffuse_cdf = get_diffuse_cdf(input.metalness);
     float pdf_diffuse = cos_theta(i) / PI;
+
+    #ifdef SAMPLE_VISIBLE_MICRONORMALS
     float pdf_m = (g1(o, input.alpha) / abs(cos_theta(o))) * d * abs(cos_d);
+    #else
+    float pdf_m = d * cos_theta(m);
+    #endif
+
     float pdf_gtr = pdf_m / (4.0 * abs(cos_d)); //Due to the reflection transformation
     pdf = pdf_diffuse * diffuse_cdf + pdf_gtr * (1.0 - diffuse_cdf);
 
@@ -120,7 +127,11 @@ float3 sample_direction(float3 o, float2 alpha, float metalness, inout SAMPLER s
         i = cosine_weighted_rand_dir(dir_sample);
         m = normalize(o + i);
     } else {
+        #ifdef SAMPLE_VISIBLE_MICRONORMALS
         m = sample_visible_micronormal(o, alpha, dir_sample);
+        #else
+        m = sample_micronormal(alpha, dir_sample);
+        #endif
         i = 2.0 * dot(o, m) * m - o;
     }
 
@@ -128,7 +139,12 @@ float3 sample_direction(float3 o, float2 alpha, float metalness, inout SAMPLER s
 
     float cos_d = dot(m, o);
 
+    #ifdef SAMPLE_VISIBLE_MICRONORMALS
     float pdf_m = (g1(o, alpha) / abs(cos_theta(o))) * distribution(m, alpha) * abs(cos_d);
+    #else
+    float pdf_m = distribution(m, alpha) * cos_theta(m);
+    #endif
+
     float pdf_gtr = pdf_m / (4.0 * abs(cos_d)); //Due to the reflection transformation
 
     // https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/readings/veach.pdf
@@ -228,10 +244,7 @@ void main(inout RayPayload payload, in Attributes attributes)
 
     if (max(max(emission.r, emission.g), emission.b) > 0.0 && dot(ObjectRayDirection(), obj_space_normal) < 0.0) {
 
-        #ifdef DISABLE_LIGHT_SAMPLING
-        add_radiance(payload, emission);
-
-        #else
+        #ifdef SAMPLE_LIGHTS
         if (is_first_ray(payload)) {
             add_radiance(payload, emission);
         } else {
@@ -250,6 +263,10 @@ void main(inout RayPayload payload, in Attributes attributes)
                 add_radiance(payload, w * emission);
             }
         } 
+
+        #else
+        add_radiance(payload, emission);
+
         #endif
     }
 
@@ -319,7 +336,8 @@ void main(inout RayPayload payload, in Attributes attributes)
     }
 
     float3 intersection = WorldRayOrigin() + WorldRayDirection() * RayTCurrent() + true_world_normal * ORIGIN_OFFSET;
-    #ifndef DISABLE_LIGHT_SAMPLING
+
+    #ifdef SAMPLE_LIGHTS
     add_radiance(payload, light_contribution(brdf_input, o, intersection, from_world_space, payload.sampler));
     #endif
 
