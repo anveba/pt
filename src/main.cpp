@@ -100,7 +100,10 @@ int main(int argc, char** argv)
     std::cout << scene.scene_details() << std::endl;
 
     std::vector<const char*> validation_layers;
+#ifndef NDEBUG
     validation_layers.push_back("VK_LAYER_KHRONOS_validation");
+    std::cout << "Validation layers enabled." << std::endl;
+#endif
 
     if (headless) {
         PathTraceDispatcher dispatcher(scene, width, height, validation_layers);

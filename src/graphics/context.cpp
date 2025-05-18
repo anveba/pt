@@ -65,9 +65,6 @@ void VulkanContext::init_instance(ContextUsage usage)
     if (!validation_layers_are_supported(validation_layers))
         throw std::runtime_error("Not all validation layers requested are available.");
 
-    if (!validation_layers.empty())
-        std::cout << "Validation layers enabled." << std::endl;
-
     VkApplicationInfo app_info{};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "Path Tracer";

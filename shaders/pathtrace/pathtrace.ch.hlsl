@@ -72,7 +72,7 @@ float3 diffuse_fresnel(float3 fd90, float cos_theta) {
     return 1.0 + (fd90 - 1.0) * base * base * base * base * base;
 }
 
-float get_diffuse_cdf(float metalness) {
+float diffuse_sample_probability(float metalness) {
     return lerp(0.5, 0.0, metalness);
 }
 
@@ -99,7 +99,7 @@ float3 evaluate_brdf(in BrdfEvalInput input, float3 i, float3 o, float3 m, out f
         clearcoat = 0.0;
     }
 
-    const float diffuse_cdf = get_diffuse_cdf(input.metalness);
+    const float diffuse_prob = diffuse_sample_probability(input.metalness);
     float pdf_diffuse = cos_theta(i) / PI;
 
     #ifdef SAMPLE_VISIBLE_MICRONORMALS
@@ -109,7 +109,7 @@ float3 evaluate_brdf(in BrdfEvalInput input, float3 i, float3 o, float3 m, out f
     #endif
 
     float pdf_gtr = pdf_m / (4.0 * abs(cos_d)); //Due to the reflection transformation
-    pdf = pdf_diffuse * diffuse_cdf + pdf_gtr * (1.0 - diffuse_cdf);
+    pdf = pdf_diffuse * diffuse_prob + pdf_gtr * (1.0 - diffuse_prob);
 
     return specular + diffuse;
 }
@@ -119,8 +119,8 @@ float3 sample_direction(float3 o, float2 alpha, float metalness, inout SAMPLER s
 
     float3 i;
 
-    const float diffuse_cdf = get_diffuse_cdf(metalness);
-    bool sample_diffuse = sample_1d(sampler) < diffuse_cdf;
+    const float diffuse_prob = diffuse_sample_probability(metalness);
+    bool sample_diffuse = sample_1d(sampler) < diffuse_prob;
     float2 dir_sample = sample_2d(sampler);
 
     if (sample_diffuse) {
@@ -148,8 +148,8 @@ float3 sample_direction(float3 o, float2 alpha, float metalness, inout SAMPLER s
     float pdf_gtr = pdf_m / (4.0 * abs(cos_d)); //Due to the reflection transformation
 
     // https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/readings/veach.pdf
-    pdf_diffuse *= diffuse_cdf;
-    pdf_gtr *= (1.0 - diffuse_cdf);
+    pdf_diffuse *= diffuse_prob;
+    pdf_gtr *= (1.0 - diffuse_prob);
     pdf = sample_diffuse ? pdf_diffuse : pdf_gtr;
     w = pdf / (pdf_diffuse + pdf_gtr); // TODO compare heuristics
 
