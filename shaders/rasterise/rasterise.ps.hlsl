@@ -1,6 +1,6 @@
 #include "rasterise.hlsli"
 
-float4 main(vs_out input) : SV_TARGET {
+float4 main(VsOutput input) : SV_TARGET {
     float3 normal = normalize(input.normal);
 
     float diffuse = max(dot(ubo.inv_light_dir_norm, normal), 0.0);

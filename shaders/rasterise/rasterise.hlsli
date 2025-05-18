@@ -10,7 +10,7 @@ struct UniformBufferObject
 
 cbuffer ubo : register(b0, space0) { UniformBufferObject ubo; }
 
-struct vs_in {
+struct VsInput {
     [[vk::location(0)]] float3 position : LOCATION0;
     [[vk::location(1)]] float3 normal : LOCATION1;
     [[vk::location(2)]] float2 uv : LOCATION2;
@@ -25,7 +25,7 @@ struct vs_in {
     [[vk::location(9)]] float3 normal_row2 : LOCATION9;
 };
 
-struct vs_out {
+struct VsOutput {
     float4 position : SV_POSITION;
     float3 world_position : WORLD_POS;
     float3 normal : NORMAL;
