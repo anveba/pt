@@ -22,7 +22,8 @@ void main()
         const uint src_queue = get_src_queue(queues);
         const uint id = DispatchRaysIndex().x;
 
-        // TODO: This is incorrect, but for some reason, the queue swapper does not reset the queue...
+        // TODO: This can cause undefined behaviour, but for some reason, the queue swapper does not reset the 
+        // queue, so it is done here instead... However, it does seem to work correctly.
         if (id == 0)
             reset_queue(queues, ubo.queue_capacity, get_dst_queue(queues));
         
