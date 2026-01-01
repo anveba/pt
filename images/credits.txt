@@ -1,0 +1,11 @@
+**Sponza scene** (scene courtesy of Crytek)
+ - 263K triangles
+ - 26 materials
+
+**Street scene** (scene courtesy of AFX/CGMotion 3DModel Maker on Sketchfab) 
+ - 52K triangles
+ - 34 materials
+ 
+**Car scene** (car model courtesy of Ddiaz Design on Sketchfab and warehouse model courtesy of Nicholas-3D on Skechfab)
+ - 228K triangles
+ - 25 materials
