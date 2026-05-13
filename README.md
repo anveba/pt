@@ -5,7 +5,7 @@
 </p>
 
 # General
-This program is a path tracer built using Vulkan with ray tracing extensions. It can be run in an interactive or headless mode and takes a path to a scene description as an argument. The interactive mode opens a window and allows for moving the camera and changing parameters. The headless mode will produce an image written to persistent storage. Running with --help will display information on how to operate the program. 
+A path tracer built using Vulkan with ray tracing extensions. It can be run in an interactive or headless mode and takes a path to a scene description as an argument. The interactive mode opens a window and allows for moving the camera and changing parameters. The headless mode will produce an image written to persistent storage. Running with --help will display information on how to operate the program. 
 
 Interactive mode example usage:
 ```
